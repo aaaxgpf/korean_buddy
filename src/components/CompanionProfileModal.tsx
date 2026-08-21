@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { X, Camera } from 'lucide-react';
 import { Companion } from '../types';
+import { CompanionAvatar } from './CompanionAvatar';
 
 interface Props {
   isOpen: boolean;
@@ -57,13 +58,12 @@ export const CompanionProfileModal: React.FC<Props> = ({ isOpen, onClose, compan
               className="w-32 h-32 rounded-full overflow-hidden relative cursor-pointer group shadow-md"
               onClick={() => fileInputRef.current?.click()}
             >
-              {editingCompanion.customAvatarUrl ? (
-                <img src={editingCompanion.customAvatarUrl} alt="Avatar" className="w-full h-full object-cover" />
-              ) : (
-                <div className={`w-full h-full flex items-center justify-center text-5xl ${editingCompanion.avatar_bg || 'bg-stone-100'}`}>
-                  {editingCompanion.avatar}
-                </div>
-              )}
+              <CompanionAvatar
+                companion={editingCompanion}
+                sizeClassName="w-32 h-32"
+                alt="Avatar"
+                className="w-full h-full text-5xl"
+              />
               <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white flex-col gap-1">
                 <Camera size={24} />
                 <span className="text-xs font-bold">Upload</span>
@@ -86,12 +86,40 @@ export const CompanionProfileModal: React.FC<Props> = ({ isOpen, onClose, compan
               <label className="block text-sm font-bold text-stone-700 mb-1">Status Message</label>
               <input 
                 type="text" 
-                value={editingCompanion.status_msg}
+                value={editingCompanion.status_msg || ''}
                 onChange={e => setEditingCompanion({...editingCompanion, status_msg: e.target.value})}
                 className="w-full p-3 rounded-xl border border-stone-200 bg-stone-50 focus:bg-white focus:border-stone-900 focus:ring-2 focus:ring-stone-400/10 outline-none transition-all"
                 placeholder="Status message..."
               />
             </div>
+
+            {(editingCompanion.group || editingCompanion.role || editingCompanion.mbti || editingCompanion.birth) && (
+              <div className="p-3.5 bg-stone-50 rounded-2xl border border-stone-200/80 space-y-2 text-xs text-stone-600">
+                <div className="flex flex-wrap gap-1.5 font-medium">
+                  {editingCompanion.group && <span className="px-2 py-0.5 bg-stone-200/80 rounded-md text-stone-800 font-bold">{editingCompanion.group}</span>}
+                  {editingCompanion.mbti && <span className="px-2 py-0.5 bg-indigo-50 border border-indigo-200/60 rounded-md text-indigo-700 font-bold">{editingCompanion.mbti}</span>}
+                  {editingCompanion.birth && <span className="px-2 py-0.5 bg-stone-100 rounded-md text-stone-700">{editingCompanion.birth}</span>}
+                  {editingCompanion.role && <span className="px-2 py-0.5 bg-stone-100 rounded-md text-stone-700">{editingCompanion.role}</span>}
+                </div>
+                {editingCompanion.personality_traits && editingCompanion.personality_traits.length > 0 && (
+                  <div className="space-y-1 pt-1 border-t border-stone-200/60">
+                    <span className="font-bold text-stone-800 block text-[11px] uppercase tracking-wider">人设与性格特质</span>
+                    <ul className="list-disc list-inside space-y-0.5 text-stone-600 leading-relaxed">
+                      {editingCompanion.personality_traits.map((trait, idx) => (
+                        <li key={idx}>{trait}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {editingCompanion.tone_style && (
+                  <div className="pt-1 border-t border-stone-200/60 text-stone-600">
+                    <span className="font-bold text-stone-800 text-[11px] uppercase tracking-wider block mb-0.5">说话习惯与语调</span>
+                    <p className="leading-relaxed">{editingCompanion.tone_style}</p>
+                  </div>
+                )}
+              </div>
+            )}
+
             <div>
               <label className="block text-sm font-bold text-stone-700 mb-1">AI Persona (Custom Prompt)</label>
               <textarea 

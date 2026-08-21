@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { Companion } from '../types';
 import { speakKorean } from '../utils/audio';
+import { CompanionAvatar } from './CompanionAvatar';
 
 interface CustomPersonaModalProps {
   isOpen: boolean;
@@ -108,13 +109,12 @@ export const CustomPersonaModal: React.FC<CustomPersonaModalProps> = ({
                 className="w-32 h-32 rounded-3xl overflow-hidden relative cursor-pointer group shadow-md"
                 onClick={() => fileInputRef.current?.click()}
               >
-                {editingCompanion.customAvatarUrl ? (
-                  <img src={editingCompanion.customAvatarUrl} alt="Avatar" className="w-full h-full object-cover" />
-                ) : (
-                  <div className={`w-full h-full flex items-center justify-center text-5xl ${editingCompanion.avatar_bg}`}>
-                    {editingCompanion.avatar}
-                  </div>
-                )}
+                <CompanionAvatar
+                  companion={editingCompanion}
+                  sizeClassName="w-32 h-32"
+                  alt="Avatar"
+                  className="rounded-3xl w-full h-full"
+                />
                 <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white flex-col gap-1">
                   <Camera size={24} />
                   <span className="text-xs font-bold">Upload</span>
@@ -220,13 +220,12 @@ export const CustomPersonaModal: React.FC<CustomPersonaModalProps> = ({
                    >
                       <div className={`w-full h-full bg-white rounded-3xl shadow-2xl border flex flex-col overflow-hidden ${isActive ? 'border-stone-900 ring-4 ring-stone-900/10' : 'border-stone-200'}`}>
                          <div className="flex-1 bg-stone-100 relative">
-                            {comp.customAvatarUrl ? (
-                              <img src={comp.customAvatarUrl} className="w-full h-full object-cover" />
-                            ) : (
-                              <div className="w-full h-full flex items-center justify-center text-8xl bg-gradient-to-br from-stone-100 to-stone-200">
-                                {comp.avatar}
-                              </div>
-                            )}
+                            <CompanionAvatar
+                              companion={comp}
+                              sizeClassName="w-full h-full"
+                              alt={comp.remark || comp.name_ko}
+                              className="w-full h-full rounded-none border-0 shadow-none"
+                            />
                             <div className="absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-black/90 via-black/40 to-transparent" />
                             <div className="absolute inset-x-0 bottom-0 p-5 text-white">
                                <div className="flex items-center gap-2 mb-1">

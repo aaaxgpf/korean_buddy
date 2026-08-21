@@ -4,6 +4,7 @@ import { CustomPersonaModal } from './components/CustomPersonaModal';
 import { CompanionProfileModal } from './components/CompanionProfileModal';
 import { CompanionSparksModal } from './components/CompanionSparksModal';
 import { CompanionChat } from './components/CompanionChat';
+import { CompanionAvatar } from './components/CompanionAvatar';
 import { UserProfileModal } from './components/UserProfileModal';
 import { StudyView } from './components/StudyView';
 import { SettingsView } from './components/SettingsView';
@@ -83,7 +84,22 @@ export default function App() {
         for (const preset of PRESET_COMPANIONS) {
           const userSaved = savedMap.get(preset.id);
           if (userSaved) {
-            merged.push({ ...preset, ...userSaved });
+            merged.push({
+              ...preset,
+              ...userSaved,
+              group: preset.group,
+              badge: preset.badge,
+              name_kr: preset.name_kr,
+              name_ko: preset.name_ko,
+              name_zh: preset.name_zh,
+              status_msg: preset.status_msg,
+              personality_traits: preset.personality_traits,
+              tone_style: preset.tone_style,
+              system_prompt: preset.system_prompt,
+              birth: preset.birth,
+              role: preset.role,
+              mbti: preset.mbti,
+            });
             savedMap.delete(preset.id);
           } else {
             merged.push(preset);
@@ -504,18 +520,24 @@ export default function App() {
                           handleSelectCompanion(comp);
                           setChatView('chat');
                        }}
-                       className={`flex items-center gap-4 p-3 rounded-2xl hover:bg-stone-50 transition-colors cursor-pointer group ${currentCompanion.id === comp.id && chatView === 'chat' ? 'bg-stone-100' : ''}`}
+                       className={`flex items-center gap-3.5 p-3 rounded-2xl hover:bg-stone-50 transition-colors cursor-pointer group ${currentCompanion.id === comp.id && chatView === 'chat' ? 'bg-stone-100' : ''}`}
                      >
-                       <div className="w-12 h-12 rounded-full bg-stone-50 flex items-center justify-center text-2xl overflow-hidden shrink-0">
-                         {comp.customAvatarUrl ? (
-                           <img src={comp.customAvatarUrl} alt={comp.name_zh} className="w-full h-full object-cover" />
-                         ) : (
-                           <span>{comp.avatar}</span>
-                         )}
-                       </div>
-                       <div className="flex flex-col flex-1 min-w-0 pb-2">
-                         <span className="font-bold text-[15px] text-stone-800 truncate">{comp.remark || comp.name_ko}</span>
-                         <span className="text-[13px] text-stone-500 truncate mt-0.5">{comp.status_msg}</span>
+                       <CompanionAvatar
+                         companion={comp}
+                         sizeClassName="w-11 h-11"
+                         alt={comp.name_zh || comp.name_ko}
+                         className="border border-slate-200 shadow-sm flex-shrink-0"
+                       />
+                       <div className="flex flex-col flex-1 min-w-0 pb-1">
+                         <div className="flex items-center justify-between gap-1.5">
+                           <span className="font-bold text-[15px] text-stone-800 shrink-0 whitespace-nowrap">{comp.remark || comp.name_ko}</span>
+                           {comp.badge && (
+                             <span className="text-[10px] font-semibold tracking-wider px-2 py-0.5 rounded-md bg-stone-100 text-stone-600 border border-stone-200/70 shrink-0 ml-auto uppercase whitespace-nowrap">
+                               {comp.badge}
+                             </span>
+                           )}
+                         </div>
+                         <span className="text-[13px] text-stone-500 truncate mt-0.5 leading-snug">{comp.status_msg}</span>
                        </div>
                      </div>
                    ))}
@@ -597,6 +619,7 @@ export default function App() {
             settings={settings}
             onUpdateSettings={setSettings}
             userProfile={userProfile}
+            companions={companions}
           />
         )}
       </main>

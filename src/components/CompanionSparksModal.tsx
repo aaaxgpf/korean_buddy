@@ -12,6 +12,7 @@ import {
 import confetti from 'canvas-confetti';
 import { Companion, CompanionSparkRecord } from '../types';
 import { SPARK_LEVELS } from '../utils/sparks';
+import { CompanionAvatar } from './CompanionAvatar';
 
 interface CompanionSparksModalProps {
   isOpen: boolean;
@@ -107,13 +108,12 @@ export const CompanionSparksModal: React.FC<CompanionSparksModalProps> = ({
               >
                 {/* Left: Idol Info */}
                 <div className="flex items-center gap-3.5">
-                  <div className="w-12 h-12 rounded-2xl border border-[#E0DED7] bg-white flex items-center justify-center text-2xl shadow-xs shrink-0 group-hover:scale-105 transition-transform overflow-hidden">
-                    {comp.customAvatarUrl ? (
-                      <img src={comp.customAvatarUrl} alt={comp.name_zh} className="w-full h-full object-cover" />
-                    ) : (
-                      <span>{comp.avatar}</span>
-                    )}
-                  </div>
+                  <CompanionAvatar
+                    companion={comp}
+                    sizeClassName="w-12 h-12"
+                    alt={comp.name_zh}
+                    className="border border-[#E0DED7] shadow-xs group-hover:scale-105 transition-transform"
+                  />
                   <div>
                     <div className="flex items-center gap-2">
                       <span className="font-bold text-[#1A1A1A] text-base">{comp.name_zh}</span>

@@ -60,13 +60,13 @@ export const DailyStudySessionView: React.FC<Props> = ({
       setSelectedTarget(activeCustomBook.title);
       // Construct a dynamic 3-stage plan directly from the custom book's real words
       const bookWords = activeCustomBook.words;
-      const dayVocab = bookWords.slice(0, 10);
-      const warmupSample = bookWords.slice(0, 3).map((w, i) => ({
+      const dayVocab = bookWords.slice(0, Math.min(bookWords.length, 25));
+      const warmupSample = bookWords.slice(0, Math.min(bookWords.length, 8)).map((w, i) => ({
         question: `词书《${activeCustomBook.title}》中‘${w.meaning_zh}’对应的韩文是？`,
         answer: w.hangul || w.word,
         hint: `${(w.hangul || w.word)[0]}... (词性: ${w.type || '常用'})`
       }));
-      const recallSample = bookWords.slice(0, 5).map(w => ({
+      const recallSample = bookWords.slice(0, Math.min(bookWords.length, 12)).map(w => ({
         prompt_zh: `默写词书核心词：${w.meaning_zh}`,
         target_kr: w.hangul || w.word,
         hint: w.hanja_or_root ? `汉字词源: ${w.hanja_or_root}` : `首字母: ${(w.hangul || w.word)[0]}`
@@ -76,14 +76,14 @@ export const DailyStudySessionView: React.FC<Props> = ({
         id: `custom_plan_${Date.now()}`,
         title: `《${activeCustomBook.title}》深度实战打卡计划`,
         targetLevel: activeCustomBook.title,
-        totalDays: 30,
+        totalDays: Math.max(7, Math.ceil(bookWords.length / 15)),
         currentDay: 1,
         createdAt: Date.now(),
         days: [
           {
             day: 1,
             theme: `${activeCustomBook.title} · 核心重点词温习与默写`,
-            goal: `掌握 ${dayVocab.length} 个核心生词，完成 3 个实战热身与默写自测`,
+            goal: `掌握 ${dayVocab.length} 个核心生词，完成 ${warmupSample.length} 个实战热身与 ${recallSample.length} 个默写自测`,
             vocab_count: dayVocab.length,
             grammar_count: 2,
             stage1_warmup: warmupSample,

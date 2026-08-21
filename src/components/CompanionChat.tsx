@@ -27,11 +27,13 @@ import {
   MoreVertical
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { Companion, ChatMessage, VocabItem, GrammarPointItem, CompanionSparkRecord } from '../types';
+import { Companion, ChatMessage, VocabItem, GrammarPointItem, CompanionSparkRecord, UserProfile } from '../types';
+import { CompanionAvatar } from './CompanionAvatar';
 import { speakKorean, stopSpeaking } from '../utils/audio';
+import { directSendGeminiChat } from '../utils/geminiDirect';
 
 interface CompanionChatProps {
-  theme?: 'default' | 'kkt';
+  theme?: 'default' | 'kkt' | 'wechat';
   onBack?: () => void;
   companion: Companion;
   companions: Companion[];
@@ -48,6 +50,47 @@ interface CompanionChatProps {
   onSaveDialogue: (msg: ChatMessage) => void;
   savedDialogueIds: Set<string>;
   onOpenProfile?: () => void;
+  userProfile?: UserProfile;
+}
+
+// WeChat style timestamp formatter
+export function formatWeChatChatTime(timestamp: number): string {
+  const date = new Date(timestamp);
+  const now = new Date();
+  
+  const isToday = date.toDateString() === now.toDateString();
+  
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const isYesterday = date.toDateString() === yesterday.toDateString();
+
+  const isSameYear = date.getFullYear() === now.getFullYear();
+
+  const hours = date.getHours();
+  const minutes = date.getMinutes().toString().padStart(2, '0');
+  const period = hours < 12 ? '上午' : '下午';
+  const displayHour = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
+  const timeStr = `${period} ${displayHour}:${minutes}`;
+
+  if (isToday) {
+    return timeStr;
+  }
+  if (isYesterday) {
+    return `昨天 ${timeStr}`;
+  }
+  if (isSameYear) {
+    return `${date.getMonth() + 1}月${date.getDate()}日 ${timeStr}`;
+  }
+  return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日 ${timeStr}`;
+}
+
+export function shouldShowTimeDivider(currentMsg: ChatMessage, prevMsg?: ChatMessage): boolean {
+  if (!prevMsg) return true;
+  const diffMs = currentMsg.timestamp - prevMsg.timestamp;
+  if (diffMs > 5 * 60 * 1000) return true; // > 5 minutes
+  const currDate = new Date(currentMsg.timestamp).toDateString();
+  const prevDate = new Date(prevMsg.timestamp).toDateString();
+  return currDate !== prevDate;
 }
 
 export const CompanionChat: React.FC<CompanionChatProps> = ({
@@ -239,6 +282,17 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
     const imagePayload = selectedImage;
     const clientTemporal = getClientTemporalContext();
 
+    // Get current stored API configuration
+    let apiConfig = undefined;
+    try {
+      const savedConfig = localStorage.getItem('korean_buddy_api_config');
+      if (savedConfig) {
+        apiConfig = JSON.parse(savedConfig);
+      }
+    } catch (e) {
+      console.warn('Failed to parse api config from localStorage', e);
+    }
+
     const userMessage: ChatMessage = {
       id: `user_${Date.now()}`,
       role: 'user',
@@ -256,22 +310,72 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
     setIsLoading(true);
 
     try {
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      let data: any;
+
+      if (apiConfig?.provider === 'gemini' && apiConfig?.apiKey?.trim()) {
+        data = await directSendGeminiChat({
+          apiKey: apiConfig.apiKey,
+          model: apiConfig.model,
+          baseURL: apiConfig.baseURL,
           character: companion,
           messages: [...messages, userMessage],
           userNickname: companion.userNickname,
           languageMode,
           imageBase64: imagePayload,
-          videoLink: videoData?.link,
-          videoInfo: videoData,
-          clientTemporal,
-        }),
-      });
+          imageMime: undefined,
+          clientTemporal
+        });
+      } else {
+        const res = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            character: companion,
+            messages: [...messages, userMessage],
+            userNickname: companion.userNickname,
+            languageMode,
+            imageBase64: imagePayload,
+            videoLink: videoData?.link,
+            videoInfo: videoData,
+            clientTemporal,
+            apiConfig,
+          }),
+        });
 
-      const data = await res.json();
+        data = await res.json();
+
+        if (!res.ok || data.error) {
+          if (data.error === 'NO_API_KEY') {
+            const alertMsg: ChatMessage = {
+              id: `alert_${Date.now()}`,
+              role: 'assistant',
+              content: '⚠️ 未配置大模型 API Key。请点击右上角「Settings 设置」页面，填入您的 API Key（支持 Gemini / Claude / OpenAI / DeepSeek 等）以开启真实多轮对话。',
+              korean: 'API 키가 필요합니다. 설정(Settings)에서 API 키를 입력해 주세요.',
+              translation_zh: '⚠️ 未配置大模型 API Key。请点击右上角「Settings 设置」页面填入 API Key 开启真实对话。',
+              timestamp: Date.now(),
+              isRead: true,
+            };
+            onUpdateMessages((prev) =>
+              prev.map((m) => (m.id === userMessage.id ? { ...m, isRead: true } : m)).concat(alertMsg)
+            );
+            return;
+          } else {
+            const errorMsg: ChatMessage = {
+              id: `err_${Date.now()}`,
+              role: 'assistant',
+              content: `⚠️ 请求异常：${data.message || '大模型请求失败，请检查网络或 API 设置'}`,
+              korean: '오류가 발생했습니다. 다시 시도해 주세요.',
+              translation_zh: `⚠️ 请求异常：${data.message || '请检查网络或 API 设置'}`,
+              timestamp: Date.now(),
+              isRead: true,
+            };
+            onUpdateMessages((prev) =>
+              prev.map((m) => (m.id === userMessage.id ? { ...m, isRead: true } : m)).concat(errorMsg)
+            );
+            return;
+          }
+        }
+      }
 
       const rawKr = data.korean_text || data.korean || data.content || '';
       const pureKorean = rawKr
@@ -297,8 +401,20 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
       onUpdateMessages((prev) =>
         prev.map((m) => (m.id === userMessage.id ? { ...m, isRead: true } : m)).concat(assistantMessage)
       );
-    } catch (err) {
+    } catch (err: any) {
       console.error('Chat error:', err);
+      const networkErrMessage: ChatMessage = {
+        id: `err_${Date.now()}`,
+        role: 'assistant',
+        content: `⚠️ 网络连接异常：${err?.message || '无法连接到服务器'}`,
+        korean: '네트워크 연결 오류가 발생했습니다.',
+        translation_zh: '⚠️ 网络连接异常，请检查网络后重试。',
+        timestamp: Date.now(),
+        isRead: true,
+      };
+      onUpdateMessages((prev) =>
+        prev.map((m) => (m.id === userMessage.id ? { ...m, isRead: true } : m)).concat(networkErrMessage)
+      );
     } finally {
       setIsLoading(false);
     }
@@ -311,6 +427,16 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
 
     try {
       const clientTemporal = getClientTemporalContext();
+      let apiConfig = undefined;
+      try {
+        const savedConfig = localStorage.getItem('korean_buddy_api_config');
+        if (savedConfig) {
+          apiConfig = JSON.parse(savedConfig);
+        }
+      } catch (e) {
+        console.warn('Failed to parse api config', e);
+      }
+
       const res = await fetch('/api/chat/proactive', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -318,10 +444,16 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
           character: companion,
           userNickname: companion.userNickname,
           clientTemporal,
+          apiConfig,
         }),
       });
 
       const data = await res.json();
+      if (!res.ok || data.error) {
+        console.warn('Proactive check-in unavailable:', data.message);
+        return;
+      }
+
       const rawKr = data.korean_text || data.korean || data.content || '';
       const pureKorean = rawKr
         .replace(/\([^)]*[\u4e00-\u9fa5]+[^)]*\)/g, '')
@@ -345,8 +477,6 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
       };
 
       onUpdateMessages((prev) => [...prev, proactiveMessage]);
-
-      // TTS auto playback removed based on user preference
     } catch (err) {
       console.error('Proactive message error:', err);
     } finally {
@@ -437,17 +567,23 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
               </button>
             )}
-            <div className="w-10 h-10 rounded-full bg-stone-100 flex items-center justify-center text-xl overflow-hidden">
-               {companion.customAvatarUrl ? (
-                 <img src={companion.customAvatarUrl} alt={companion.name_zh} className="w-full h-full object-cover" />
-               ) : (
-                 <span>{companion.avatar}</span>
-               )}
-            </div>
-            <div className="flex flex-col">
-              <span className="font-bold text-stone-800 text-lg">{companion.name_zh}</span>
-              <div className="flex items-center gap-1.5 opacity-80">
-                <span className="text-xs text-stone-500 font-medium tracking-wide text-[11px] uppercase truncate max-w-[150px]">{companion.status_msg}</span>
+            <CompanionAvatar
+              companion={companion}
+              sizeClassName="w-10 h-10"
+              alt={companion.name_zh}
+              className="border border-slate-200 shadow-sm flex-shrink-0"
+            />
+            <div className="flex flex-col min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-stone-800 text-base sm:text-lg leading-tight">{companion.name_ko} · {companion.name_zh}</span>
+                {companion.badge && (
+                  <span className="text-[10px] font-semibold tracking-wider px-2 py-0.5 rounded-md bg-stone-100/90 text-stone-600 border border-stone-200/70 uppercase">
+                    {companion.badge}
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-1.5 opacity-90 mt-0.5">
+                <span className="text-xs text-stone-500 font-medium tracking-normal truncate max-w-[260px] sm:max-w-[360px]">{companion.status_msg}</span>
               </div>
             </div>
           </div>
@@ -491,9 +627,12 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
                   }}
                   className={`flex flex-col items-center gap-1 min-w-[60px] p-2 rounded-lg transition-colors ${isSelected ? 'bg-amber-50' : 'hover:bg-stone-50'}`}
                 >
-                  <div className={`w-10 h-10 rounded-[14px] flex items-center justify-center text-lg ${isSelected ? 'bg-amber-100 border-2 border-amber-400' : 'bg-stone-100 border border-stone-200'}`}>
-                    {comp.avatar}
-                  </div>
+                  <CompanionAvatar
+                    companion={comp}
+                    sizeClassName="w-10 h-10"
+                    alt={comp.name_zh}
+                    className={`rounded-xl border ${isSelected ? 'border-amber-400 ring-2 ring-amber-400/20' : 'border-stone-200'}`}
+                  />
                   <span className="text-[10px] font-medium text-stone-800 truncate w-full text-center">{comp.name_zh}</span>
                 </button>
               );
@@ -546,13 +685,12 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
               {/* COMPANION AVATAR ON LEFT */}
               {!isUser && (
                 <div className="shrink-0 self-start mt-0.5">
-                  <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full border border-[#D5D1C8] overflow-hidden bg-white flex items-center justify-center text-base sm:text-lg shadow-xs">
-                    {companion.customAvatarUrl ? (
-                      <img src={companion.customAvatarUrl} alt={companion.name_zh} className="w-full h-full object-cover" />
-                    ) : (
-                      <span>{companion.avatar}</span>
-                    )}
-                  </div>
+                  <CompanionAvatar
+                    companion={companion}
+                    sizeClassName="w-8 h-8 sm:w-9 sm:h-9"
+                    alt={companion.name_zh}
+                    className="border border-[#D5D1C8] shadow-xs"
+                  />
                 </div>
               )}
 

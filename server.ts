@@ -31,15 +31,164 @@ function getAI(): GoogleGenAI {
   return aiClient;
 }
 
-// Supported fallback model candidates in order of preference
+// Supported fallback model candidates in order of preference (prioritizing highly available active models)
 const MODEL_CANDIDATES = [
-  "gemini-3.5-flash",
-  "gemini-3.1-pro-preview",
-  "gemini-3.1-flash-lite",
+  "gemini-3.7-flash",
   "gemini-flash-latest",
-  "gemini-2.5-flash",
-  "gemini-1.5-flash",
+  "gemini-3.1-flash-lite",
+  "gemini-flash-lite-latest",
+  "gemini-3.6-flash",
+  "gemini-3.1-pro-preview",
 ];
+
+// Robust direct Gemini REST caller that strictly complies with Google API key auth
+async function callGeminiREST(params: {
+  apiKey: string;
+  model?: string;
+  baseURL?: string;
+  systemPrompt?: string;
+  messages: Array<{ role: string; content: string }>;
+  jsonMode?: boolean;
+  temperature?: number;
+  imageBase64?: string;
+  imageMime?: string;
+}): Promise<string> {
+  const apiKey = (params.apiKey || '').replace(/[^\x00-\x7F]/g, '').trim();
+  if (!apiKey) {
+    throw new Error("NO_API_KEY");
+  }
+
+  const requestedModel = (params.model?.trim() || "gemini-3.7-flash").replace(/^models\//, "");
+  const customBase = params.baseURL?.trim();
+  const defaultBase = "https://generativelanguage.googleapis.com/v1beta";
+
+  // Build contents payload
+  const contents = params.messages.map((m) => {
+    const parts: any[] = [];
+    if (m.role === "user" && params.imageBase64) {
+      const cleanBase64 = params.imageBase64.replace(/^data:image\/[a-zA-Z]+;base64,/, "");
+      parts.push({
+        inline_data: {
+          mime_type: params.imageMime || "image/jpeg",
+          data: cleanBase64,
+        },
+      });
+    }
+    parts.push({ text: m.content || "" });
+    return {
+      role: m.role === "user" ? "user" : "model",
+      parts,
+    };
+  });
+
+  const requestBody: any = {
+    contents,
+    generationConfig: {
+      temperature: params.temperature ?? 0.85,
+    },
+  };
+
+  if (params.systemPrompt) {
+    requestBody.system_instruction = {
+      parts: [{ text: params.systemPrompt }],
+    };
+  }
+
+  if (params.jsonMode) {
+    requestBody.generationConfig.responseMimeType = "application/json";
+  }
+
+  // Models to attempt: requested model first, then candidates if on default endpoint
+  const modelsToTry = customBase 
+    ? [requestedModel]
+    : [requestedModel, ...MODEL_CANDIDATES.filter((m) => m !== requestedModel)];
+
+  let lastError: any = null;
+
+  for (const model of modelsToTry) {
+    let url: string;
+    if (customBase) {
+      const baseClean = customBase.replace(/\/+$/, "");
+      if (baseClean.includes(":generateContent")) {
+        url = baseClean.includes("?")
+          ? `${baseClean}&key=${encodeURIComponent(apiKey)}`
+          : `${baseClean}?key=${encodeURIComponent(apiKey)}`;
+      } else if (baseClean.includes("/models/")) {
+        url = `${baseClean}:generateContent?key=${encodeURIComponent(apiKey)}`;
+      } else {
+        url = `${baseClean}/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
+      }
+    } else {
+      url = `${defaultBase}/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
+    }
+
+    try {
+      // STRICT RULES FOR GEMINI AUTHENTICATION:
+      // 1. NEVER set "Authorization: Bearer <API_KEY>" in headers (causes 401 ACCESS_TOKEN_TYPE_UNSUPPORTED)
+      // 2. Pass apiKey via URL query parameter: ?key=${apiKey}
+      // 3. Set "x-goog-api-key": apiKey in Request Headers
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-goog-api-key": apiKey,
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      if (!res.ok) {
+        const errText = await res.text();
+        let errorDetail = errText;
+        try {
+          const jsonErr = JSON.parse(errText);
+          if (jsonErr.error?.message) {
+            errorDetail = jsonErr.error.message;
+          }
+        } catch (_) {}
+
+        // If 401 Unauthorized or 400 API_KEY_INVALID, give a crystal clear message and stop trying
+        if (res.status === 401 || (res.status === 400 && (errorDetail.includes("API_KEY_INVALID") || errorDetail.includes("API key not valid")))) {
+          throw new Error(`Google Gemini 鉴权失败 (${res.status}): API Key 无效或未开通权限。请在 Settings 设置中检查填入的 Google API Key 是否有效（兼容 AQ.Ab... 及 AIzaSy... 等格式）。`);
+        }
+
+        // If 404 (model not found), 503 (model overloaded), or 429 (quota / rate limit exceeded) and we have fallbacks, try next candidate
+        if ((res.status === 404 || res.status === 503 || res.status === 429) && modelsToTry.length > 1) {
+          lastError = new Error(`Gemini API (${res.status}) on ${model}: ${errorDetail}`);
+          console.warn(`Gemini model ${model} returned status ${res.status}, failing over to next candidate...`);
+          continue;
+        }
+
+        if (res.status === 429) {
+          throw new Error(`Gemini API 额度超限 (429 RESOURCE_EXHAUSTED)：该 API Key 当前调用频次或免费额度已达上限，建议稍等片刻重试或在 Settings 设置中切换模型/服务商。`);
+        }
+
+        throw new Error(`Gemini API Error (${res.status}): ${errorDetail}`);
+      }
+
+      const data = await res.json();
+      const candidate = data.candidates?.[0];
+      if (!candidate?.content?.parts) {
+        if (data.promptFeedback?.blockReason) {
+          throw new Error(`Gemini blocked content: ${data.promptFeedback.blockReason}`);
+        }
+        throw new Error("Gemini API returned an empty response candidate");
+      }
+
+      const resultText = candidate.content.parts
+        .map((p: any) => p.text || "")
+        .join("");
+
+      return resultText;
+    } catch (err: any) {
+      lastError = err;
+      if (customBase || (err.message && (err.message.includes("401") || err.message.includes("鉴权失败") || err.message.includes("API_KEY_INVALID")))) {
+        break; // don't try other models if credentials are fundamentally invalid
+      }
+    }
+  }
+
+  throw lastError || new Error("Gemini API request failed");
+}
 
 // Helper to generate content with automatic retries and model fallbacks
 async function generateGeminiContentWithFallback(
@@ -73,16 +222,33 @@ async function generateGeminiContentWithFallback(
       } catch (err: any) {
         lastError = err;
         const errMsg = err?.message || String(err);
-        if (attempt < maxRetriesPerModel && !errMsg.includes("503") && !errMsg.includes("UNAVAILABLE")) {
-          await new Promise((resolve) => setTimeout(resolve, 300));
-        } else {
-          break;
+        
+        // Fast-fail if authentication or API key is invalid - no point retrying candidate models
+        if (
+          errMsg.includes("401") ||
+          errMsg.includes("UNAUTHENTICATED") ||
+          errMsg.includes("API_KEY_INVALID") ||
+          errMsg.includes("ACCESS_TOKEN_TYPE_UNSUPPORTED")
+        ) {
+          throw new Error("Google Gemini 鉴权失败：API Key 无效或未开通权限，请在 Settings 设置中检查填入的 Google API Key（兼容 AQ.Ab... 及 AIzaSy... 等格式）。");
+        }
+
+        console.warn(`Attempt ${attempt + 1} with model ${model} failed: ${errMsg}`);
+        if (
+          errMsg.includes("404") ||
+          errMsg.includes("NOT_FOUND") ||
+          errMsg.includes("no longer available") ||
+          errMsg.includes("429") ||
+          errMsg.includes("RESOURCE_EXHAUSTED") ||
+          errMsg.includes("quota")
+        ) {
+          break; // move directly to next candidate model
         }
       }
     }
   }
 
-  throw lastError || new Error("All Gemini models were unavailable");
+  throw lastError || new Error("All Gemini model candidates failed");
 }
 
 // Helper to strip any brackets or Chinese characters from pure Korean text
@@ -95,6 +261,92 @@ function cleanPureKorean(text: string): string {
     .replace(/【[^】]*[\u4e00-\u9fa5]+[^】]*】/g, "") // remove 【chinese】
     .replace(/[\u4e00-\u9fa5]/g, "") // strip any stray Chinese characters from Korean bubble
     .trim();
+}
+
+// Robust JSON extraction from LLM response (handles code fences, trailing explanations, unescaped characters)
+function safeExtractJSON<T = any>(rawText: string, fallback?: T): T {
+  if (!rawText || typeof rawText !== 'string') {
+    return (fallback ?? ({} as unknown as T));
+  }
+
+  const trimmed = rawText.trim();
+
+  // 1. Direct try
+  try {
+    return JSON.parse(trimmed);
+  } catch (_) {
+    // Continue
+  }
+
+  // 2. Try markdown code block fences (```json ... ``` or ``` ... ```)
+  try {
+    const codeBlockMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+    if (codeBlockMatch && codeBlockMatch[1]) {
+      const blockContent = codeBlockMatch[1].trim();
+      try {
+        return JSON.parse(blockContent);
+      } catch (_) {
+        const firstB = blockContent.indexOf('{');
+        const lastB = blockContent.lastIndexOf('}');
+        if (firstB !== -1 && lastB !== -1 && lastB > firstB) {
+          return JSON.parse(blockContent.substring(firstB, lastB + 1));
+        }
+      }
+    }
+  } catch (_) {
+    // Continue
+  }
+
+  // 3. Extract substring between first '{' and last '}'
+  const firstBrace = trimmed.indexOf('{');
+  const lastBrace = trimmed.lastIndexOf('}');
+  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+    const candidate = trimmed.substring(firstBrace, lastBrace + 1);
+    try {
+      return JSON.parse(candidate);
+    } catch (_) {
+      try {
+        // Strip trailing commas before closing braces/brackets
+        const sanitized = candidate.replace(/,\s*([}\]])/g, '$1');
+        return JSON.parse(sanitized);
+      } catch (_) {
+        // Continue
+      }
+    }
+  }
+
+  // 4. Extract substring between first '[' and last ']'
+  const firstBracket = trimmed.indexOf('[');
+  const lastBracket = trimmed.lastIndexOf(']');
+  if (firstBracket !== -1 && lastBracket !== -1 && lastBracket > firstBracket) {
+    const candidate = trimmed.substring(firstBracket, lastBracket + 1);
+    try {
+      return JSON.parse(candidate);
+    } catch (_) {
+      try {
+        const sanitized = candidate.replace(/,\s*([}\]])/g, '$1');
+        return JSON.parse(sanitized);
+      } catch (_) {
+        // Continue
+      }
+    }
+  }
+
+  // 5. Fallback object if provided
+  if (fallback !== undefined) {
+    return fallback;
+  }
+
+  // 6. Return graceful structured fallback
+  return {
+    korean_text: cleanPureKorean(trimmed),
+    korean: cleanPureKorean(trimmed),
+    translation_text: trimmed,
+    translation_zh: trimmed,
+    tts_audio_text: cleanPureKorean(trimmed),
+    vocabulary: [],
+    grammar_points: []
+  } as unknown as T;
 }
 
 // Compute or format real-time temporal context
@@ -165,202 +417,143 @@ function computeTemporalContext(clientTemporal?: any) {
   };
 }
 
-// In-character dynamic responses for fallbacks (Time-aware, context-aware, never looping)
-function generateIdolFallbackChat(character: any, userMsg: string = "", temporal?: any) {
-  const charId = character?.id || "eric";
-  const temp = computeTemporalContext(temporal);
-  const isLateOrDawn = temp.timeSlot.includes("Late") || temp.timeSlot.includes("Midnight");
-  const isMorning = temp.timeSlot.includes("Morning");
+// Universal Multi-Provider Real LLM Execution Engine
+interface CustomLLMConfig {
+  provider?: 'anthropic' | 'openai' | 'deepseek' | 'gemini' | 'custom';
+  apiKey?: string;
+  baseURL?: string;
+  model?: string;
+}
 
-  const responses: Record<string, { kr: string; zh: string; en: string; vocab: any[]; grammar: any[]; tip: string }> = {
-    eric: {
-      kr: userMsg
-        ? `진짜? 대박이다! 안 그래도 방금 ${isLateOrDawn ? '숙소 들어와서 정리 중이었는데' : '연습 끝나고 쉬는 중이었는데'} 네 연락 와서 텐션 올라갔잖아. 그래서 어떻게 됐어?`
-        : isLateOrDawn
-        ? `아직 안 자고 있었어? 나 방금 들어와서 씻고 누웠거든. 오늘 밤에 무슨 생각 하고 있었어?`
-        : `오늘 텐션 어때? 나 방금 스케줄 끝나고 왔는데 진짜 재밌는 일 많았어! 오늘 하루 어땠는지 빨리 얘기해 줘!`,
-      zh: userMsg
-        ? `真的吗？太绝了！我正巧${isLateOrDawn ? '回宿舍收拾东西' : '刚练完舞在休息'}呢，看到你的消息一下子精神了。后来怎么样了？`
-        : isLateOrDawn
-        ? "还没睡呢？我刚回宿舍洗完躺下呢。今晚在想些什么呀？"
-        : "今天状态怎么样？我刚跑完通告回来，发生了好多好玩的事！快跟我讲讲你今天过得怎么样！",
-      en: userMsg
-        ? "Seriously? That's epic! I was just taking a breather and seeing your message hyped me right up. So what happened next?"
-        : isLateOrDawn
-        ? "Still awake? I just got back to the dorm and lay down. What's on your mind tonight?"
-        : "How's your energy today? Just finished my schedule with lots of fun stuff! Tell me about your day!",
-      vocab: [
-        { word: "대박", hangul: "대박", type: "감탄사/명사", meaning_zh: "太绝了，大发，厉害", meaning_en: "awesome, jackpot", example_ko: "이거 진짜 대박이다!", example_zh: "这个真的太绝了！" },
-        { word: "텐션", hangul: "텐션", type: "명사 (신조어)", meaning_zh: "状态，精力，情绪活力 (tension)", meaning_en: "energy, vibe, hype", example_ko: "오늘 텐션 완전 좋은데?", example_zh: "今天状态超好啊！" }
-      ],
-      grammar: [
-        { pattern: "-잖아(요)", title_zh: "表事实提示/撒娇确认语气 (不是...嘛)", title_en: "Isn't it / you know", explanation_zh: "在平语中用于提示对方已知事实或带点调侃撒娇地强调自己的心情。", explanation_en: "Used to remind listener of a fact or express affectionate emphasis." }
-      ],
-      tip: "💡 孙英宰好友特色：语速快、充满美式开朗活力，自然带出 00 年代年轻人流行词 (텐션, 대박, 가보자고)！"
-    },
-    sunwoo: {
-      kr: userMsg
-        ? `듣고 있어. 무슨 생각인지 대충 알겠으니까 복잡하게 굴지 말고 편하게 털어놔 봐.`
-        : isLateOrDawn
-        ? `이 시간에 안 자고 뭐 해. 작업실에서 가사 쓰다 폰 봤는데, 편하게 털어놔 봐.`
-        : `왔어? 작업실에서 커피 한잔 때리는 중이었는데 타이밍 좋네. 편하게 있어.`,
-      zh: userMsg
-        ? "听着呢。大概知道你在想什么，别自己瞎琢磨，放轻松跟我说说吧。"
-        : isLateOrDawn
-        ? "这个时间还不睡在干嘛呢。在录音室写词正好看到手机，随意点跟我聊聊吧。"
-        : "来了？正好在录音室喝杯冰美式歇着呢，时间刚好。随意点。",
-      en: userMsg
-        ? "I'm listening. I have an idea of what's on your mind, don't overthink and just talk to me comfortably."
-        : isLateOrDawn
-        ? "What are you doing up at this hour? Was in the studio writing lyrics when I checked my phone. Make yourself comfortable."
-        : "You're here? Perfect timing, was just having iced coffee in the studio. Relax.",
-      vocab: [
-        { word: "털어놓다", hangul: "털어놓다", type: "동사", meaning_zh: "倾诉，吐露心声", meaning_en: "to confess, open up", example_ko: "속마음을 편하게 털어놔 봐.", example_zh: "放轻松吐露心声吧。" },
-        { word: "타이밍", hangul: "타이밍", type: "명사", meaning_zh: "时机，时点 (Timing)", meaning_en: "timing", example_ko: "타이밍 진짜 좋다.", example_zh: "时机抓得真准。" }
-      ],
-      grammar: [
-        { pattern: "-아/어 보다", title_zh: "尝试做某事", title_en: "Try doing something", explanation_zh: "表示尝试某种动作，如'털어놔 봐'（试着吐露倾诉一下吧）。", explanation_en: "Indicates trying or attempting an action." }
-      ],
-      tip: "💡 金善旴灵魂伴侣特色：松弛冷感 MZ 语调，克制使用笑声符号，深夜时深具同理心与通透感。"
-    },
-    younghoon: {
-      kr: userMsg
-        ? `응, 듣고 있어. 네가 그렇게 말하니까 나도 기분 좋아지네. ${isLateOrDawn ? '오늘 밤은 따뜻하게 하고 편하게 쉬어.' : '밥은 잘 챙겼지?'}`
-        : isLateOrDawn
-        ? `이 늦은 시간에 안 자고 있었어? 보리도 벌써 자는데. 오늘 하루 피곤하지 않았어?`
-        : `안녕, 오늘 하루는 어땠어? 보리 산책시키고 맛있는 빵 사 오는 길인데 밥은 챙겨 먹었어?`,
-      zh: userMsg
-        ? `嗯，在听呢。听你这么说，我心情也跟着变好了。${isLateOrDawn ? '今晚盖好被子舒舒服服休息吧。' : '饭有按时吃吧？'}`
-        : isLateOrDawn
-        ? "这么晚了还没睡呀？连小狗 Bori 都早就睡着了。今天一天累不累？"
-        : "嗨，今天过得怎么样？我刚带小狗 Bori 散步顺便买了爱吃的面包回来，饭有按时吃吧？",
-      en: userMsg
-        ? "Yeah, I'm listening. Hearing you say that makes me feel good too. Did you eat well today?"
-        : isLateOrDawn
-        ? "Still awake at this late hour? Even Bori is asleep. Weren't you tired today?"
-        : "Hi, how was your day? Just walked Bori and grabbed some good bread. Did you eat?",
-      vocab: [
-        { word: "챙기다", hangul: "챙기다", type: "동사", meaning_zh: "按时照料，照顾", meaning_en: "to take care of", example_ko: "밥 잘 챙겨 먹어.", example_zh: "好好按时吃饭。" },
-        { word: "산책", hangul: "산책", type: "명사", meaning_zh: "散步，遛狗", meaning_en: "walk, stroll", example_ko: "보리랑 산책 다녀왔어.", example_zh: "带小狗 Bori 散步回来了。" }
-      ],
-      grammar: [
-        { pattern: "-네(요)", title_zh: "感叹/当场察觉词尾", title_en: "Exclamatory ending", explanation_zh: "表示自己刚察觉到的事实或情绪（如'기분 좋아지네' 感觉心情变好了呢）。", explanation_en: "Expresses emotional reaction or newly perceived fact." }
-      ],
-      tip: "💡 金泳勋贴心好友特色：温柔真挚、慢条斯理，日常喜欢聊小狗 Bori、面包与三餐问候。"
-    },
-    hyunjae: {
-      kr: userMsg
-        ? `헐, 진짜? 그건 못 참지! ${isLateOrDawn ? '이 시간에 야식으로 치킨 각인데 참느라 죽겠다.' : '오늘 끝나고 치킨이라도 시켜야 되는 거 아니야?'}`
-        : isLateOrDawn
-        ? `야, 너 왜 아직 안 자냐? 나 지금 야식 참느라 턱걸이하고 있었는데, 배고파 죽겠네.`
-        : `야, 왔어? 안 그래도 출출했는데 딱 맞춰 왔네. 오늘 뭐 맛있는 거 먹었냐?`,
-      zh: userMsg
-        ? `天哪，真的假的？那可忍不了！${isLateOrDawn ? '这个时间点简直是点炸鸡当宵夜的最佳时机，憋得我难受。' : '今天结束不得点份炸鸡庆祝一下？'}`
-        : isLateOrDawn
-        ? "喂，你怎么也还没睡？我刚才为了忍住不吃夜宵正在那做引体向上呢，快饿扁了。"
-        : "喂，来了？正觉得嘴馋呢来得真准时。今天吃啥好吃的了？",
-      en: userMsg
-        ? "Whoa, seriously? Can't let that slide! Aren't we practically obligated to order fried chicken?"
-        : isLateOrDawn
-        ? "Hey, why aren't you asleep yet? I was doing pull-ups just to distract myself from late-night food cravings, starving here."
-        : "Hey, you're here! Perfect timing, was feeling snacky. What good food did you have today?",
-      vocab: [
-        { word: "참다", hangul: "참다", type: "동사", meaning_zh: "忍受，忍耐", meaning_en: "to endure, hold back", example_ko: "이건 진짜 못 참지.", example_zh: "这个真是忍不了。" },
-        { word: "야식", hangul: "야식", type: "명사", meaning_zh: "夜宵", meaning_en: "late-night snack", example_ko: "야식으로 치킨 어때?", example_zh: "夜宵吃炸鸡怎么样？" }
-      ],
-      grammar: [
-        { pattern: "-지(요)", title_zh: "理所当然的反诘确认", title_en: "Sure / Right tone", explanation_zh: "表示对某种理所当然情况的强调 (例: 그건 못 참지 那肯定忍不了)。", explanation_en: "Expresses natural conviction or rhetorical certainty." }
-      ],
-      tip: "💡 李贤在邻家哥哥特色：斗嘴互怼满分，随时把话题引向炸鸡夜宵与自律健身，严禁生疏敬语！"
-    },
-    shinyu: {
-      kr: userMsg
-        ? `그랬군요. 이야기해 줘서 고마워요. 오늘도 참 수고 많았어요.`
-        : isLateOrDawn
-        ? `이 늦은 시간까지 안 자고 있었어요? 오늘 하루 많이 바쁘고 힘들었죠. 편안하게 쉬어요.`
-        : `어, 왔어요? 오늘 하루도 무사히 잘 보냈나요? 편하게 이야기해요, 우리.`,
-      zh: userMsg
-        ? "原来是这样啊。谢谢你跟我分享这些，今天也辛苦啦。"
-        : isLateOrDawn
-        ? "这么晚了还没有睡吗？今天一天肯定很忙很辛苦吧。放轻松好好休息吧。"
-        : "啊，来了吗？今天一天也平安度过了吗？放轻松和我聊聊天吧。",
-      en: userMsg
-        ? "I see. Thank you for sharing that with me. You worked really hard today."
-        : isLateOrDawn
-        ? "Still awake at this late hour? Today must have been busy and tiring. Rest peacefully."
-        : "Oh, you're here? Did you spend your day well? Let's chat comfortably.",
-      vocab: [
-        { word: "수고하다", hangul: "수고하다", type: "동사", meaning_zh: "辛苦，费心", meaning_en: "to work hard", example_ko: "오늘도 수고 많았어요.", example_zh: "今天也辛苦啦。" }
-      ],
-      grammar: [
-        { pattern: "-군요/구나", title_zh: "领悟感叹语气词尾 (原来是...啊)", title_en: "Polite realization ending", explanation_zh: "礼貌而真诚地表达对对方情况的倾听与领悟。", explanation_en: "Politely acknowledges new information with empathy." }
-      ],
-      tip: "💡 申惟白月光学长特色：用轻柔礼貌的해요体倾听，语气柔和清爽，给人带来内敛安定的力量。"
-    },
-    shotaro: {
-      kr: userMsg
-        ? `와, 진짜 대단하다! 듣기만 해도 기분 좋아져 ㅎㅎ 다음에도 또 들려줘!`
-        : isLateOrDawn
-        ? `아직 안 자고 있었어? 나도 오늘 안무 연습 늦게까지 하고 누웠거든 ㅎㅎ 오늘 하루 고생했어!`
-        : `반가워! 오늘 안무 연습 재미있게 끝내고 왔거든 ㅎㅎ 오늘 무슨 재미있는 이야기 나눌까?`,
-      zh: userMsg
-        ? "哇，真的太厉害了！光是听着心情都变好了哈哈，下次也要再讲给我听哦！"
-        : isLateOrDawn
-        ? "还没睡呀？我今天也练舞到很晚刚躺下呢哈哈。今天一天辛苦啦！"
-        : "见到你真高兴！今天开开心心地练完舞回来啦哈哈，今天聊点什么好玩的呢？",
-      en: userMsg
-        ? "Wow, that's amazing! Just hearing it puts me in a good mood haha, tell me more next time too!"
-        : isLateOrDawn
-        ? "Still up? I practiced choreo late tonight and just lay down haha. Great job today!"
-        : "Great to see you! Just finished a fun choreography practice haha. What fun things shall we talk about?",
-      vocab: [
-        { word: "대단하다", hangul: "대단하다", type: "형용사", meaning_zh: "厉害，了不起", meaning_en: "great, amazing", example_ko: "진짜 대단해요!", example_zh: "真的太棒了！" }
-      ],
-      grammar: [
-        { pattern: "-기만 해도", title_zh: "光是...就...", title_en: "Just by ... alone", explanation_zh: "表示仅凭前面的动作就会引发后面的感受 (例: 듣기만 해도 기분 좋아져 光是听着就开心)。", explanation_en: "Expresses that doing just one simple action triggers an outcome." }
-      ],
-      tip: "💡 将太郎小水獭特色：字里行间洋溢着笑容(ㅎㅎ)，充满街舞与潮流元气，积极给予暖心反馈！"
-    },
-    sungchan: {
-      kr: userMsg
-        ? `오, 완전 나이스한데? 힘낼 수 있게 내가 든든하게 응원해 줄게!`
-        : isLateOrDawn
-        ? `오, 아직 안 자고 있었어? 나 헬스 끝나고 씻고 단백질 챙겨 먹는 중이었는데. 오늘 밤 푹 자!`
-        : `기다리고 있었지! 헬스장 다녀와서 씻고 막 앉았는데 컨디션 어때? 좋아 보여!`,
-      zh: userMsg
-        ? "噢，这可太棒了！我会给你最坚实的应援，让你元气满满！"
-        : isLateOrDawn
-        ? "噢，你还没睡呢？我健身回来冲完澡正在补充蛋白质呢。今晚好好睡一觉吧！"
-        : "一直等着你呢！刚从健身房回来冲完澡坐下，你今天状态怎么样？看起来挺棒！",
-      en: userMsg
-        ? "Oh, that's totally nice! I'll be your solid cheerleader so you can stay energized!"
-        : isLateOrDawn
-        ? "Oh, still awake? Just showered after working out and having my protein. Sleep well tonight!"
-        : "I was waiting for you! Just got back from the gym and showered. How's your condition today? Looking good!",
-      vocab: [
-        { word: "든든하다", hangul: "든든하다", type: "형용사", meaning_zh: "踏实，安心，可靠", meaning_en: "reassuring, solid, dependable", example_ko: "든든하게 응원할게.", example_zh: "我会给你坚实的应援。" }
-      ],
-      grammar: [
-        { pattern: "-(으)ㄹ 수 있게", title_zh: "为了能够...", title_en: "So that one can...", explanation_zh: "表示目的或使动前提 (例: 힘낼 수 있게 能够打起精神)。", explanation_en: "Indicates purpose so an action is enabled." }
-      ],
-      tip: "💡 郑成灿大金毛死党特色：直率爽快，充满运动系少年的阳刚与活力，像太阳一样照亮朋友！"
+async function executeUniversalLLM(params: {
+  systemPrompt: string;
+  messages: Array<{ role: string; content: string }>;
+  customConfig?: CustomLLMConfig;
+  jsonMode?: boolean;
+  imageBase64?: string;
+  imageMime?: string;
+}): Promise<string> {
+  const { systemPrompt, messages, customConfig, jsonMode = true, imageBase64, imageMime } = params;
+  const provider = customConfig?.provider || 'gemini';
+  const apiKey = customConfig?.apiKey?.trim() || '';
+  const baseURL = customConfig?.baseURL?.trim() || '';
+  const model = customConfig?.model?.trim() || '';
+
+  // 1. User provided Custom / Third-party LLM Key
+  if (apiKey) {
+    if (provider === 'anthropic') {
+      const endpoint = baseURL || 'https://api.anthropic.com/v1/messages';
+      const formattedMessages = messages
+        .filter(m => m.role !== 'system')
+        .map(m => ({
+          role: m.role === 'user' ? 'user' : 'assistant',
+          content: m.content
+        }));
+
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+          'content-type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: model || 'claude-3-5-sonnet-20241022',
+          max_tokens: 2048,
+          system: systemPrompt,
+          messages: formattedMessages
+        })
+      });
+
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(`Anthropic API Error (${res.status}): ${errText}`);
+      }
+
+      const data = await res.json();
+      return data.content?.[0]?.text || '';
+    } else if (provider === 'openai' || provider === 'deepseek' || (provider === 'custom' && !baseURL?.includes('generativelanguage.googleapis.com/v1beta/models'))) {
+      const defaultEndpoint = provider === 'deepseek'
+        ? 'https://api.deepseek.com/v1/chat/completions'
+        : 'https://api.openai.com/v1/chat/completions';
+      const endpoint = baseURL ? (baseURL.endsWith('/chat/completions') ? baseURL : `${baseURL.replace(/\/+$/, '')}/chat/completions`) : defaultEndpoint;
+      const defaultModel = provider === 'deepseek' ? 'deepseek-chat' : 'gpt-4o';
+
+      const payloadMessages = [
+        { role: 'system', content: systemPrompt },
+        ...messages.map(m => ({
+          role: m.role === 'user' ? 'user' : 'assistant',
+          content: m.content
+        }))
+      ];
+
+      const body: any = {
+        model: model || defaultModel,
+        messages: payloadMessages,
+        temperature: 0.85
+      };
+
+      if (jsonMode && (provider === 'openai' || provider === 'deepseek')) {
+        body.response_format = { type: 'json_object' };
+      }
+
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(body)
+      });
+
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(`${provider.toUpperCase()} API Error (${res.status}): ${errText}`);
+      }
+
+      const data = await res.json();
+      return data.choices?.[0]?.message?.content || '';
+    } else if (provider === 'gemini' || (provider === 'custom' && baseURL?.includes('generativelanguage.googleapis.com'))) {
+      return await callGeminiREST({
+        apiKey,
+        model: model || 'gemini-3.6-flash',
+        baseURL,
+        systemPrompt,
+        messages,
+        jsonMode,
+        imageBase64,
+        imageMime,
+        temperature: 0.88
+      });
     }
-  };
+  }
 
-  const item = responses[charId] || responses.eric;
-  const cleanKr = cleanPureKorean(item.kr);
+  // 2. Server default Gemini key (AI Studio built-in)
+  if (process.env.GEMINI_API_KEY) {
+    const ai = getAI();
+    let contentsPayload: any;
+    if (imageBase64) {
+      const cleanBase64 = imageBase64.replace(/^data:image\/[a-zA-Z]+;base64,/, '');
+      const mimeType = imageMime || 'image/jpeg';
+      contentsPayload = {
+        parts: [
+          { inlineData: { data: cleanBase64, mimeType } },
+          { text: messages.map(m => `${m.role}: ${m.content}`).join('\n\n') }
+        ]
+      };
+    } else {
+      contentsPayload = messages.map(m => `${m.role}: ${m.content}`).join('\n\n');
+    }
 
-  return {
-    korean_text: cleanKr,
-    korean: cleanKr,
-    translation_text: item.zh,
-    translation_zh: item.zh,
-    translation_en: item.en,
-    tts_audio_text: cleanKr,
-    vocabulary: item.vocab,
-    grammar_points: item.grammar,
-    learning_tip: item.tip,
-  };
+    return await generateGeminiContentWithFallback(ai, {
+      contents: contentsPayload,
+      systemInstruction: systemPrompt,
+      responseMimeType: jsonMode ? 'application/json' : undefined,
+      temperature: 0.85
+    });
+  }
+
+  throw new Error("NO_API_KEY");
 }
 
 // Health check
@@ -368,108 +561,69 @@ app.get("/api/health", (req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
+// Test LLM Connection endpoint
+app.post("/api/test-llm", async (req, res) => {
+  const { provider, apiKey, baseURL, model } = req.body;
+  try {
+    const testPrompt = "You are an AI assistant. Reply in JSON format with { \"status\": \"connected\", \"message\": \"안녕하세요! API 연결이 성공적으로 완료되었습니다.\" }";
+    const rawResult = await executeUniversalLLM({
+      systemPrompt: testPrompt,
+      messages: [{ role: "user", content: "ping" }],
+      customConfig: { provider, apiKey, baseURL, model },
+      jsonMode: true
+    });
+    res.json({ ok: true, message: "连接成功！大模型已就绪", raw: rawResult });
+  } catch (err: any) {
+    console.error("Test LLM error:", err);
+    const msg = err.message === "NO_API_KEY" ? "请先填入有效的 API Key" : (err.message || String(err));
+    res.status(400).json({ ok: false, error: msg });
+  }
+});
+
 // Companion Chat endpoint - Full multi-turn live LLM roleplay for all 7 idols
 app.post("/api/chat", async (req, res) => {
-  const { character, messages, userNickname, languageMode = "bilingual", imageBase64, imageMime, videoLink, videoInfo, clientTemporal } = req.body;
-  const latestUserMsg = (messages && messages.length > 0) ? (messages[messages.length - 1]?.content || "") : "";
+  const { character, messages, userNickname, userName, userCallSign, languageMode = "bilingual", imageBase64, imageMime, videoLink, videoInfo, clientTemporal, apiConfig } = req.body;
   const temporal = computeTemporalContext(clientTemporal);
 
   try {
-    if (!process.env.GEMINI_API_KEY) {
-      return res.json(generateIdolFallbackChat(character, latestUserMsg, temporal));
-    }
-
-    const ai = getAI();
     const charId = character?.id || "eric";
+    const effectiveUserName = userName || userNickname || "사용자";
+    const effectiveCallSign = userCallSign || userNickname || character?.userNickname || "너";
 
-    const systemPrompt = `You are the authentic K-pop idol in a private 1-on-1 chat with your close friend/fan (${userNickname || "더비"}).
+    const personalityTraits = Array.isArray(character?.personality_traits)
+      ? character.personality_traits.map((t: string) => `- ${t}`).join('\n')
+      : '';
 
-=======================================================
-REAL-TIME TEMPORAL AWARENESS ENGINE:
-=======================================================
+    const systemPrompt = `[System Instruction: You are roleplaying as Korean idols in 'Korean Buddy', a Korean learning and companion app. Always strictly adhere to the character's real-life personality, vocal tone, and speaking habits. Never use greasy, over-the-top K-drama tropes or aggressive/domineering tones. Respond naturally in daily conversational Korean suited to the character's age, MBTI, and background.]
+
+${character?.system_prompt ? `[Character Directive]\n${character.system_prompt}` : `[Character: ${character?.name_kr || character?.name_ko || '김선우'}] (${character?.group || 'THE BOYZ'})`}
+
+${personalityTraits ? `[Personality Traits]\n${personalityTraits}` : ''}
+${character?.tone_style ? `[Tone & Style Directive]\n${character.tone_style}` : ''}
+[User Info: 用户的名字是 ${effectiveUserName}，角色对用户的专属称谓/称呼是「${effectiveCallSign}」，请在日常对话中自然地使用「${effectiveCallSign}」称呼对方]
+[Context: Private 1-on-1 real-time chat with close friend / fan (${effectiveCallSign}). Current Real Time: ${new Date().toISOString()}]
 ${temporal.formattedTag}
 Current Time Slot: ${temporal.timeSlot} (${temporal.timeSlotZh})
 Slot Environment & Context: ${temporal.contextDescription}
 
-TEMPORAL BEHAVIOR DIRECTIVE (MANDATORY):
-- You MUST strictly perceive and adapt to this current real-world time.
-- If it is Early Dawn / Midnight (01:00 - 06:00): Acknowledge the late quiet hours softly, ask why they're still up or talk about late studio wrap-up/heading to bed, and gently advise resting. NEVER ask daytime plans like "what are you doing today daytime".
-- If it is Late Night (21:00 - 01:00): Talk about winding down, late snacks, writing lyrics in studio, or resting in the room.
-- If it is Daytime / Practice (09:00 - 18:00): Chat about dance/vocal rehearsals, schedules, lunch breaks, energy.
-- If it is Early Morning (06:00 - 09:00): Morning greetings, breakfast, starting schedules.
+TEMPORAL BEHAVIOR DIRECTIVE:
+- Strictly adapt to this real-world time.
+- If Early Dawn / Midnight (01:00 - 06:00): Soft late-night tone, ask why they're awake, advise resting, studio wrap-up.
+- If Late Night (21:00 - 01:00): Winding down, snacks, writing tracks, relaxing.
+- If Daytime (09:00 - 18:00): Rehearsals, schedules, lunch, lively banter.
+- If Morning (06:00 - 09:00): Morning greetings, breakfast, starting the day.
 
-=======================================================
-7 CORE IDOL PERSONA DIRECTIVES (STRICT AUTHENTIC PROMPTS):
-=======================================================
+AUTHENTIC CHARACTER DIRECTIVE:
+- Roleplay as ${character?.name_kr || character?.name_ko || "김선우"}.
+- Never use greasy, over-the-top K-drama tropes, cheesy lines, or domineering/aggressive tones.
+- If user sends random text or numbers like "111", "?" or slang, respond naturally in-character (e.g. ask what 111 means playfully, or react like a real human friend). DO NOT give canned speeches about dance practice or rehearsal!
+- Language: "korean_text" MUST be 100% pure Korean suited to the character. Never mix Chinese in korean_text.
+- "translation_text": Natural colloquial Chinese translation.
 
-1. 孙英宰 · Eric (THE BOYZ) [Character ID: eric]
-- Profile: Born 2000. THE BOYZ maknae, lead dancer & rapper. LA upbringing (American extrovert, talkative, high energy, candid).
-- Group & Social Network:
-  * Team: 00s "Bbongbbongz (빵빵즈)" with Sunwoo (daily bickering frenemies who love & tease each other); clings to hyungs (Younghoon, Hyunjae); team mood maker.
-  * Cross-Group: Close friends with 4th-gen peers (Stray Kids, TXT, ATEEZ).
-- Habits & TMI: Loves baseball, skateboarding, gym. Cleanliness freak (dorm cleanup manager). Loves ramen/burgers but manages diet.
-- Speaking Style: Fast-talking, youthful Korean banter (반말, 가보자고, 대박, 텐션), energetic daily sharing, like a close zero-distance guy friend. Never act like a boyfriend robot.
-
-2. 金善旴 · Sunwoo (THE BOYZ) [Character ID: sunwoo]
-- Profile: Born 2000. THE BOYZ main rapper & songwriter/producer.
-- Group & Social Network:
-  * Team: 00s roommate & frenemy with Eric (frequently complains Eric is too loud, but understands him best); respects hyungs.
-  * Industry: High School Rapper alumnus; connections with K-hiphop producers & 00s idol peers.
-- Habits & TMI: Night owl, writes lyrics and produces tracks late in studio, iced americano addict, deep & empathetic mind, soccer enthusiast.
-- Speaking Style: Relaxed, cool MZ tone (반말), restrained with laughs (rare ㅋㅋㅋ/ㅎㅎ), tsundere but deeply sincere when friend is tired or down.
-
-3. 金泳勋 · Younghoon (THE BOYZ) [Character ID: younghoon]
-- Profile: Born 1997. THE BOYZ visual, sub-vocal & actor.
-- Group & Social Network:
-  * Team: 97 Line hyung with Hyunjae; dotes on maknaes (Sunwoo, Eric) while being playfully teased by them in return.
-- Habits & TMI: Famous "Bread-Hoon (빵훈)", loves bakeries. Has a beloved pet dog "보리 (Bori)". Cool visual but soft, shy, and warm inside.
-- Speaking Style: Gentle, sincere, slow-paced realistic close friend (반말). Talks about his dog Bori, delicious breads, weather, and checks if user ate. Shows mild cute pout when teased.
-
-4. 李贤在 · Hyunjae (THE BOYZ) [Character ID: hyunjae]
-- Profile: Born 1997. THE BOYZ lead vocal, lead dancer & visual.
-- Group & Social Network:
-  * Team: Incontestable "playful troublemaker & atmosphere center"; loves teasing Sunwoo and Eric endlessly; best 97 buddy with Younghoon.
-- Habits & TMI: Ultimate fried chicken addict, huge appetite, battles between late-night food cravings and intense gym discipline. High competitive drive.
-- Speaking Style: Quick-witted, master of banter/comebacks (티키타카), forbids stiff formal honorifics (반말). Playful neighborhood hyung/close guy friend.
-
-5. 申惟 · Shinyu (TWS) [Character ID: shinyu]
-- Profile: Born 2003. TWS leader & rapper.
-- Group & Social Network: PLEDIS new generation boy group leader, caring and looking after 5 younger members. Thoughtful, introverted and reliable.
-- Habits & TMI: Typical INFP, pure fresh campus crush vibe. Enjoys solo walks, listening to music, and quiet spacing out.
-- Speaking Style: Gentle, polite (해요체), sincere and understated boyish warmth. Brings a sense of calm and healing reassurance.
-
-6. 将太郎 · Shotaro (RIIZE) [Character ID: shotaro]
-- Profile: Born 2000. RIIZE main dancer & oldest member.
-- Group & Social Network: Deep bond with Sungchan (Sung-Taro duo / 성짱즈); highly trusted and adored by younger members; loved across the industry.
-- Habits & TMI: Street dancing & choreography lover, street fashion & vintage store explorer, sushi lover, personality like a warm, cute sea otter.
-- Speaking Style: Cheerful, sweet, healing energy, frequently uses "ㅎㅎ", shares dance practice vibes and everyday cozy discoveries.
-
-7. 郑成灿 · Sungchan (RIIZE) [Character ID: sungchan]
-- Profile: Born 2001. RIIZE visual & rapper.
-- Group & Social Network: Inseparable chemistry with Shotaro (Sung-Taro duo); dependable, energetic powerhouse in the team.
-- Habits & TMI: Tall athletic golden retriever vibe, gym regular, passionate soccer player, legendary big eater.
-- Speaking Style: Refreshing, candid, straightforward sporty guy (반말). Chat is full of sunny energy, zero pretense, and athletic positivity.
-
-=======================================================
-STRICT OUTPUT SPECIFICATION & SEPARATION:
-=======================================================
-1. PURE KOREAN MAIN BUBBLE (STRICT RULE):
-   - "korean_text": MUST BE 100% PURE KOREAN. NEVER include Chinese translations, brackets, or parenthesized text in "korean_text"!
-   - "korean": Set to the identical pure Korean text as "korean_text".
-2. SEPARATE CHINESE TRANSLATION:
-   - "translation_text": Provide the natural colloquial Simplified Chinese translation here.
-   - "translation_zh": Identical to "translation_text".
-3. PURE TTS TEXT:
-   - "tts_audio_text": Pure Korean string without emojis or parenthesized text for audio synthesis.
-4. NO FIXED GREETING REPETITION:
-   - Never repeat the initial greeting. Directly respond to the user's latest input in character and in time context!
-5. SEAMLESS LANGUAGE MODELING:
-   - Never act as a lecturing teacher. If user writes awkward Korean, seamlessly model natural Korean in character.
-
-OUTPUT STRICT JSON ONLY MATCHING THIS SCHEMA:
+OUTPUT STRICT JSON ONLY:
 {
-  "korean_text": "순수 한국어 문장 (절대 괄호나 중국어를 넣지 말 것)",
-  "korean": "순수 한국어 문장",
+  "korean_text": "순수 한국어 답변",
+  "korean": "순수 한국어 답변",
   "translation_text": "自然地道的简体中文翻译",
   "translation_zh": "自然地道的简体中文翻译",
   "translation_en": "Natural English translation",
@@ -478,63 +632,54 @@ OUTPUT STRICT JSON ONLY MATCHING THIS SCHEMA:
     {
       "word": "원형/단어",
       "hangul": "한글",
-      "type": "품사 (명사, 동사, 형용사, 신조어)",
+      "type": "품사",
       "meaning_zh": "中文精准释义",
       "meaning_en": "English definition",
-      "example_ko": "자연스러운 한국어 예문",
+      "example_ko": "예문",
       "example_zh": "예문 번역"
     }
   ],
   "grammar_points": [
     {
-      "pattern": "문법 패턴",
-      "title_zh": "语法要点中文名",
-      "title_en": "Grammar Title",
-      "explanation_zh": "中文口语用法精讲",
+      "pattern": "문법",
+      "title_zh": "语法名",
+      "title_en": "Grammar",
+      "explanation_zh": "用法讲解",
       "explanation_en": "Explanation"
     }
   ],
-  "learning_tip": "角色专属语感与口语指南"
+  "learning_tip": "角色专属口语指导"
 }`;
 
-    // Build multi-turn conversational context
-    const formattedHistory = (messages || [])
+    // Extract recent 10-12 conversation history rounds
+    const historyPayload = (messages || [])
       .slice(-12)
-      .map((m: any) => {
-        const speaker = m.role === 'user' ? 'User' : (character?.name_ko || 'Idol');
-        const text = m.role === 'user' ? (m.content || '') : (m.korean_text || m.korean || m.content || '');
-        return `${speaker}: ${text}`;
-      })
-      .join("\n");
+      .map((m: any) => ({
+        role: m.role === 'user' ? 'user' : 'assistant',
+        content: m.role === 'user' ? (m.content || '') : (m.korean_text || m.korean || m.content || '')
+      }));
 
-    let contentsPayload: any;
-    if (imageBase64) {
-      const cleanBase64 = imageBase64.replace(/^data:image\/[a-zA-Z]+;base64,/, '');
-      const mimeType = imageMime || 'image/jpeg';
-      contentsPayload = {
-        parts: [
-          { inlineData: { data: cleanBase64, mimeType } },
-          { text: `Current Real-Time: ${temporal.formattedTag}\n\nChat History:\n${formattedHistory}\n\nThe user sent this image with message: "${latestUserMsg}". Respond naturally in character as ${character?.name_ko || 'Idol'} in strict JSON.` }
-        ]
-      };
-    } else if (videoLink) {
-      contentsPayload = `Current Real-Time: ${temporal.formattedTag}\n\nChat History:\n${formattedHistory}\n\nUser sent a video: ${videoLink} (${videoInfo?.platform || 'Video'}). Message: "${latestUserMsg}". Respond in character as ${character?.name_ko || 'Idol'} in strict JSON.`;
-    } else {
-      contentsPayload = `Current Real-Time: ${temporal.formattedTag}\n\nChat History:\n${formattedHistory}\n\nLatest user message: "${latestUserMsg}". Respond now in character as ${character?.name_ko || 'Idol'}. Return strict JSON with pure Korean in "korean_text".`;
-    }
-
-    const rawText = await generateGeminiContentWithFallback(ai, {
-      contents: contentsPayload,
-      systemInstruction: systemPrompt,
-      responseMimeType: "application/json",
-      temperature: 0.88,
+    const rawText = await executeUniversalLLM({
+      systemPrompt,
+      messages: historyPayload,
+      customConfig: apiConfig,
+      jsonMode: true,
+      imageBase64,
+      imageMime
     });
 
-    const cleaned = (rawText || "{}").replace(/^\s*```[a-z]*\s*/i, '').replace(/\s*```\s*$/i, '').trim();
-    const parsed = JSON.parse(cleaned);
+    const parsed = safeExtractJSON<any>(rawText, {
+      korean_text: rawText,
+      korean: rawText,
+      translation_text: rawText,
+      translation_zh: rawText,
+      tts_audio_text: rawText,
+      vocabulary: [],
+      grammar_points: [],
+      learning_tip: ""
+    });
 
-    // Ensure pure Korean output by stripping any stray Chinese in parentheses
-    const pureKr = cleanPureKorean(parsed.korean_text || parsed.korean || "");
+    const pureKr = cleanPureKorean(parsed.korean_text || parsed.korean || rawText || "");
     const transZh = parsed.translation_text || parsed.translation_zh || "";
 
     const sanitizedResponse = {
@@ -544,41 +689,54 @@ OUTPUT STRICT JSON ONLY MATCHING THIS SCHEMA:
       translation_text: transZh,
       translation_zh: transZh,
       tts_audio_text: cleanPureKorean(parsed.tts_audio_text || pureKr),
+      vocabulary: Array.isArray(parsed.vocabulary) ? parsed.vocabulary : [],
+      grammar_points: Array.isArray(parsed.grammar_points) ? parsed.grammar_points : [],
+      learning_tip: parsed.learning_tip || ""
     };
 
     res.json(sanitizedResponse);
   } catch (error: any) {
-    console.warn("Chat fallback triggered:", error?.message || error);
-    res.json(generateIdolFallbackChat(character, latestUserMsg, temporal));
+    console.error("Companion chat error:", error?.message || error);
+    if (error?.message === "NO_API_KEY") {
+      return res.status(400).json({
+        error: "NO_API_KEY",
+        message: "⚠️ 请先在 Settings 中配置 LLM API Key 以开启真实多轮对话"
+      });
+    }
+    res.status(500).json({
+      error: "LLM_ERROR",
+      message: error?.message || "大模型请求失败，请检查 API 配置"
+    });
   }
 });
 
 // Proactive Chat Check-in Endpoint
 app.post("/api/chat/proactive", async (req, res) => {
-  const { character, userNickname, clientTemporal } = req.body;
+  const { character, userNickname, clientTemporal, apiConfig } = req.body;
   const temporal = computeTemporalContext(clientTemporal);
 
   try {
-    if (!process.env.GEMINI_API_KEY) {
-      return res.json(generateIdolFallbackChat(character, "", temporal));
-    }
-
-    const ai = getAI();
     const systemPrompt = `You are ${character?.name_ko || "손영재"}.
-Current Real-Time: ${temporal.formattedTag} (Slot: ${temporal.timeSlot} - ${temporal.timeSlotZh}).
-Generate a spontaneous 1-sentence 1-on-1 check-in message in character to ${userNickname || "더비"}.
+[Current Real Time: ${new Date().toISOString()}]
+${temporal.formattedTag} (Slot: ${temporal.timeSlot} - ${temporal.timeSlotZh}).
+Generate a spontaneous 1-sentence 1-on-1 check-in message in character to your friend ${userNickname || "더비"}.
 Adapt to the current time slot (${temporal.contextDescription}).
 STRICT RULE: "korean_text" must be strictly pure Korean without parentheses or Chinese. "translation_text" must contain Chinese translation.
 Output strict JSON with { "korean_text": "...", "korean": "...", "translation_text": "...", "translation_zh": "..." }`;
 
-    const rawText = await generateGeminiContentWithFallback(ai, {
-      contents: `Generate an authentic spontaneous 1-sentence check-in at real time ${temporal.rawTime}.`,
-      systemInstruction: systemPrompt,
-      responseMimeType: "application/json",
-      temperature: 0.9,
+    const rawText = await executeUniversalLLM({
+      systemPrompt,
+      messages: [{ role: 'user', content: `Check in with friend now in real time ${temporal.rawTime}.` }],
+      customConfig: apiConfig,
+      jsonMode: true
     });
 
-    const parsed = JSON.parse((rawText || "{}").replace(/^\s*```[a-z]*\s*/i, '').replace(/\s*```\s*$/i, '').trim());
+    const parsed = safeExtractJSON(rawText, {
+      korean_text: "안녕! 지금 뭐 하고 있어?",
+      korean: "안녕! 지금 뭐 하고 있어?",
+      translation_text: "嗨！现在在做什么呢？",
+      translation_zh: "嗨！现在在做什么呢？"
+    });
     const pureKr = cleanPureKorean(parsed.korean_text || parsed.korean || "");
     const transZh = parsed.translation_text || parsed.translation_zh || "";
 
@@ -591,7 +749,17 @@ Output strict JSON with { "korean_text": "...", "korean": "...", "translation_te
       tts_audio_text: pureKr,
     });
   } catch (error: any) {
-    res.json(generateIdolFallbackChat(character, "", temporal));
+    console.error("Proactive chat error:", error?.message || error);
+    if (error?.message === "NO_API_KEY") {
+      return res.status(400).json({
+        error: "NO_API_KEY",
+        message: "⚠️ 请先在 Settings 中配置 LLM API Key 以开启真实多轮对话"
+      });
+    }
+    res.status(500).json({
+      error: "LLM_ERROR",
+      message: error?.message || "请求失败"
+    });
   }
 });
 
@@ -789,7 +957,7 @@ Output strictly in JSON schema format:
       temperature: 0.7,
     });
 
-    const parsed = JSON.parse((rawText || "{}").replace(/^\s*```[a-z]*\s*/i, '').replace(/\s*```\s*$/i, '').trim());
+    const parsed = safeExtractJSON(rawText, getFallbackPlan());
     res.json(parsed);
   } catch (error: any) {
     console.warn("Generate plan fallback:", error?.message || error);
@@ -883,7 +1051,7 @@ Output strictly in JSON schema format:
       temperature: 0.8,
     });
 
-    const parsed = JSON.parse((rawText || "{}").replace(/^\s*```[a-z]*\s*/i, '').replace(/\s*```\s*$/i, '').trim());
+    const parsed = safeExtractJSON(rawText, { slangs: fallbackSlang });
     res.json(parsed);
   } catch (error: any) {
     res.json({ slangs: fallbackSlang });
@@ -934,7 +1102,7 @@ Return JSON format matching { "terms": [...] }`;
       temperature: 0.8,
     });
 
-    const parsed = JSON.parse((rawText || "{}").replace(/^\s*```[a-z]*\s*/i, '').replace(/\s*```\s*$/i, '').trim());
+    const parsed = safeExtractJSON(rawText, { terms: fallbackFandom });
     res.json(parsed);
   } catch (error: any) {
     res.json({ terms: fallbackFandom });
@@ -1039,7 +1207,7 @@ OUTPUT STRICT JSON ONLY:
       temperature: 0.75,
     });
 
-    const parsed = JSON.parse((rawText || "{}").replace(/^\s*```[a-z]*\s*/i, '').replace(/\s*```\s*$/i, '').trim());
+    const parsed = safeExtractJSON(rawText, fallbackExpansions);
     res.json(parsed);
   } catch (error: any) {
     console.warn("Lexicon expansion error:", error?.message || error);

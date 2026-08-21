@@ -18,6 +18,7 @@ import {
 import confetti from 'canvas-confetti';
 import { SpeakingTask, SpeakingEvaluation, Companion } from '../types';
 import { speakKorean } from '../utils/audio';
+import { CompanionAvatar } from './CompanionAvatar';
 
 interface SpeakingViewProps {
   speakingTasks: SpeakingTask[];
@@ -278,7 +279,12 @@ export const SpeakingView: React.FC<SpeakingViewProps> = ({
               </div>
               {evaluation.companion_comment && (
                 <div className="p-4 bg-white rounded-xl border border-[#E0DED7] text-xs flex items-start gap-3.5">
-                  <span className="text-2xl">{companion.avatar}</span>
+                  <CompanionAvatar
+                    companion={companion}
+                    sizeClassName="w-9 h-9"
+                    alt={companion.name_zh}
+                    className="border border-[#E0DED7] shadow-2xs mt-0.5"
+                  />
                   <div>
                     <span className="font-bold text-[#2D2D2D] block mb-1">
                       {companion.name_zh}:

@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { ChatMessage, VocabItem, GrammarCard, Companion } from '../types';
 import { speakKorean } from '../utils/audio';
+import { CompanionAvatar } from './CompanionAvatar';
 
 interface NotebookViewProps {
   savedDialogues: ChatMessage[];
@@ -144,7 +145,12 @@ export const NotebookView: React.FC<NotebookViewProps> = ({
                       <div className="flex items-center gap-2">
                         {comp && (
                           <span className="flex items-center gap-1.5 text-xs font-bold text-[#2D2D2D]">
-                            <span>{comp.avatar}</span>
+                            <CompanionAvatar
+                              companion={comp}
+                              sizeClassName="w-5 h-5"
+                              alt={comp.name_zh}
+                              className="border border-slate-200"
+                            />
                             <span>{comp.name_zh}'s Chat</span>
                           </span>
                         )}

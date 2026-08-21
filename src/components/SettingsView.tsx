@@ -1,42 +1,171 @@
-import React, { useState } from 'react';
-import { Settings, Palette, Target, Globe, Mic, Volume2, Key, Sliders, CheckCircle2, Play, User } from 'lucide-react';
-import { AppSettings, UserProfile } from '../types';
+import React, { useState, useEffect, useRef } from 'react';
+import { 
+  Settings, 
+  Palette, 
+  Target, 
+  Globe, 
+  Mic, 
+  Volume2, 
+  Key, 
+  Sliders, 
+  CheckCircle2, 
+  AlertCircle, 
+  Play, 
+  User, 
+  Sparkles, 
+  Server, 
+  Zap, 
+  RefreshCw,
+  Eye,
+  EyeOff,
+  Clipboard,
+  X,
+  Radio
+} from 'lucide-react';
+import { AppSettings, UserProfile, LLMConfig, MiniMaxConfig, VoiceSlotConfig, Companion } from '../types';
 import { PRESET_COMPANIONS } from '../data/companions';
 import { speakKorean, stopSpeaking } from '../utils/audio';
+import { directTestGeminiConnection } from '../utils/geminiDirect';
+import { UserProfileModal } from './UserProfileModal';
 
 interface Props {
   settings: AppSettings;
   onUpdateSettings: (s: AppSettings) => void;
   userProfile: UserProfile;
   onUpdateUserProfile?: (profile: UserProfile) => void;
+  companions?: Companion[];
 }
 
-export const SettingsView: React.FC<Props> = ({ settings, onUpdateSettings, userProfile, onUpdateUserProfile }) => {
+export const SettingsView: React.FC<Props> = ({ 
+  settings, 
+  onUpdateSettings, 
+  userProfile, 
+  onUpdateUserProfile,
+  companions = PRESET_COMPANIONS
+}) => {
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [activeVoiceTab, setActiveVoiceTab] = useState<string>('sunwoo');
   const [testingAudio, setTestingAudio] = useState<boolean>(false);
   const [savedSuccess, setSavedSuccess] = useState<boolean>(false);
 
-  const mmConfig = settings.minimax_config || {
-    group_id: '',
-    api_key: '',
-    model: 'speech-01-turbo',
-    voice_slots: {}
+  // Key Visibility Toggles
+  const [showLlmKey, setShowLlmKey] = useState<boolean>(false);
+  const [showMmKey, setShowMmKey] = useState<boolean>(false);
+
+  // LLM State
+  const [llmConfig, setLlmConfig] = useState<LLMConfig>(() => {
+    if (settings.api_config && settings.api_config.provider) {
+      return settings.api_config;
+    }
+    try {
+      const saved = localStorage.getItem('korean_buddy_api_config');
+      if (saved) return JSON.parse(saved);
+    } catch {
+      // ignore
+    }
+    return { provider: 'gemini', apiKey: '', baseURL: '', model: 'gemini-3.6-flash' };
+  });
+
+  // MiniMax State
+  const [mmConfig, setMmConfig] = useState<MiniMaxConfig>(() => {
+    if (settings.minimax_config && (settings.minimax_config.api_key || settings.minimax_config.group_id)) {
+      return settings.minimax_config;
+    }
+    try {
+      const saved = localStorage.getItem('korean_minimax_config');
+      if (saved) return JSON.parse(saved);
+    } catch {
+      // ignore
+    }
+    return {
+      group_id: '',
+      api_key: '',
+      model: 'speech-01-turbo',
+      voice_slots: {}
+    };
+  });
+
+  const [isTestingLLM, setIsTestingLLM] = useState<boolean>(false);
+  const [llmTestStatus, setLlmTestStatus] = useState<{ ok?: boolean; message?: string } | null>(null);
+
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const triggerSavedFeedback = () => {
+    setSavedSuccess(true);
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    saveTimeoutRef.current = setTimeout(() => {
+      setSavedSuccess(false);
+    }, 1800);
   };
 
-  const handleUpdateMinimaxConfig = (newPartial: Partial<typeof mmConfig>) => {
-    const updated = {
-      ...mmConfig,
-      ...newPartial
+  useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     };
+  }, []);
+
+  // Update LLM Config
+  const handleUpdateLLMField = (field: keyof LLMConfig, value: string) => {
+    // If field is apiKey, strip non-ASCII characters to avoid ISO-8859-1 header errors
+    const sanitizedValue = field === 'apiKey' ? value.replace(/[^\x00-\x7F]/g, '').trim() : value;
+    const updated: LLMConfig = {
+      ...llmConfig,
+      [field]: sanitizedValue
+    };
+    setLlmConfig(updated);
+    try {
+      localStorage.setItem('korean_buddy_api_config', JSON.stringify(updated));
+    } catch (e) {
+      console.warn('Failed to save to localStorage:', e);
+    }
+    onUpdateSettings({
+      ...settings,
+      api_config: updated
+    });
+    triggerSavedFeedback();
+  };
+
+  // Switch Provider Preset
+  const handleSelectProvider = (providerId: LLMConfig['provider']) => {
+    const preset = providerPresets[providerId] || providerPresets.custom;
+    const updated: LLMConfig = {
+      ...llmConfig,
+      provider: providerId,
+      model: preset.defaultModel,
+      baseURL: preset.defaultBaseURL
+    };
+    setLlmConfig(updated);
+    try {
+      localStorage.setItem('korean_buddy_api_config', JSON.stringify(updated));
+    } catch (e) {}
+    onUpdateSettings({
+      ...settings,
+      api_config: updated
+    });
+    triggerSavedFeedback();
+  };
+
+  // Update MiniMax Config
+  const handleUpdateMinimaxField = (field: keyof MiniMaxConfig, value: any) => {
+    const updated: MiniMaxConfig = {
+      ...mmConfig,
+      [field]: value
+    };
+    setMmConfig(updated);
+    try {
+      localStorage.setItem('korean_minimax_config', JSON.stringify(updated));
+    } catch (e) {
+      console.warn('Failed to save minimax config:', e);
+    }
     onUpdateSettings({
       ...settings,
       minimax_config: updated
     });
-    setSavedSuccess(true);
-    setTimeout(() => setSavedSuccess(false), 2000);
+    triggerSavedFeedback();
   };
 
-  const handleUpdateVoiceSlot = (characterId: string, slotPartial: any) => {
+  // Update Voice Slot for Character
+  const handleUpdateVoiceSlot = (characterId: string, slotPartial: Partial<VoiceSlotConfig>) => {
     const currentSlots = mmConfig.voice_slots || {};
     const existingSlot = currentSlots[characterId] || {
       voice_id: `voice_${characterId}_001`,
@@ -53,11 +182,57 @@ export const SettingsView: React.FC<Props> = ({ settings, onUpdateSettings, user
       }
     };
 
-    handleUpdateMinimaxConfig({ voice_slots: updatedSlots });
+    handleUpdateMinimaxField('voice_slots', updatedSlots);
+  };
+
+  // Direct clipboard paste helper for seamless experience
+  const handlePasteToField = async (setter: (val: string) => void) => {
+    try {
+      if (navigator.clipboard && navigator.clipboard.readText) {
+        const text = await navigator.clipboard.readText();
+        if (text) {
+          setter(text.trim());
+        }
+      }
+    } catch (err) {
+      console.warn('Clipboard read failed or permission denied:', err);
+    }
+  };
+
+  const handleTestLLM = async () => {
+    setIsTestingLLM(true);
+    setLlmTestStatus(null);
+    try {
+      if (llmConfig.provider === 'gemini') {
+        const result = await directTestGeminiConnection({
+          apiKey: llmConfig.apiKey || '',
+          model: llmConfig.model,
+          baseURL: llmConfig.baseURL
+        });
+        setLlmTestStatus({ ok: true, message: result.message || '大模型已成功响应！' });
+        return;
+      }
+
+      const res = await fetch('/api/test-llm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(llmConfig)
+      });
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        setLlmTestStatus({ ok: true, message: data.message || '大模型已成功响应！' });
+      } else {
+        setLlmTestStatus({ ok: false, message: data.error || '连接失败，请检查 Key、Base URL 或网络' });
+      }
+    } catch (err: any) {
+      setLlmTestStatus({ ok: false, message: err.message || '网络连接异常' });
+    } finally {
+      setIsTestingLLM(false);
+    }
   };
 
   const testIdolVoice = (charId: string) => {
-    const comp = PRESET_COMPANIONS.find(c => c.id === charId) || PRESET_COMPANIONS[0];
+    const comp = companions.find(c => c.id === charId) || PRESET_COMPANIONS.find(c => c.id === charId) || PRESET_COMPANIONS[0];
     const testPhrase = comp.intro_kr || '안녕하세요! 반가워요.';
     
     stopSpeaking();
@@ -73,51 +248,383 @@ export const SettingsView: React.FC<Props> = ({ settings, onUpdateSettings, user
     });
   };
 
+  // Provider presets
+  const providerPresets: Record<string, { defaultModel: string; defaultBaseURL: string; placeholderKey: string; popularModels: string[] }> = {
+    gemini: {
+      defaultModel: 'gemini-3.7-flash',
+      defaultBaseURL: '',
+      placeholderKey: 'AQ.Ab... 或 AIzaSy...',
+      popularModels: ['gemini-3.7-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite', 'gemini-flash-lite-latest', 'gemini-3.6-flash', 'gemini-3.1-pro-preview']
+    },
+    anthropic: {
+      defaultModel: 'claude-3-5-sonnet-20241022',
+      defaultBaseURL: 'https://api.anthropic.com/v1/messages',
+      placeholderKey: 'sk-ant-api03-...',
+      popularModels: ['claude-3-5-sonnet-20241022', 'claude-3-5-haiku-20241022', 'claude-3-opus-20240229']
+    },
+    deepseek: {
+      defaultModel: 'deepseek-chat',
+      defaultBaseURL: 'https://api.deepseek.com/v1',
+      placeholderKey: 'sk-...',
+      popularModels: ['deepseek-chat', 'deepseek-reasoner']
+    },
+    openai: {
+      defaultModel: 'gpt-4o',
+      defaultBaseURL: 'https://api.openai.com/v1',
+      placeholderKey: 'sk-...',
+      popularModels: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'o1-mini']
+    },
+    custom: {
+      defaultModel: 'gpt-4o-mini',
+      defaultBaseURL: 'https://your-custom-proxy.com/v1',
+      placeholderKey: 'sk-...',
+      popularModels: ['gpt-4o-mini', 'claude-3-5-sonnet', 'deepseek-chat', 'qwen-plus']
+    }
+  };
+
   return (
     <div className="max-w-3xl mx-auto px-4 py-8 pb-36 space-y-8 animate-in fade-in duration-300 h-full overflow-y-auto">
+      {/* Header */}
       <div className="flex items-center justify-between border-b border-stone-200 pb-4">
         <div className="flex items-center gap-3">
-          <Settings className="text-stone-800" size={28} />
+          <div className="w-10 h-10 rounded-xl bg-stone-900 text-white flex items-center justify-center shadow-xs">
+            <Settings size={22} />
+          </div>
           <div>
-            <h1 className="text-2xl font-bold text-stone-800">Settings & Voice Engine</h1>
-            <p className="text-xs text-stone-500">Korean Buddy 系统设置与 MiniMax 声音克隆控制台</p>
+            <h1 className="text-2xl font-bold tracking-tight text-stone-900">Settings & API Hub</h1>
+            <p className="text-xs text-stone-500">大模型 API 配置中心、MiniMax 声音克隆与偏好设置</p>
           </div>
         </div>
         {savedSuccess && (
           <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-full border border-emerald-200 animate-pulse">
             <CheckCircle2 size={14} />
-            <span>Saved Config</span>
+            <span>配置已自动保存</span>
           </div>
         )}
       </div>
 
       {/* User Profile Card */}
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-stone-200/70 flex items-center justify-between gap-4">
+      <div 
+        onClick={() => setIsProfileModalOpen(true)}
+        className="bg-white p-5 rounded-2xl shadow-xs border border-stone-200 flex items-center justify-between gap-4 hover:border-amber-400 hover:shadow-sm transition-all cursor-pointer group"
+      >
         <div className="flex items-center gap-4">
-          <div className="w-16 h-16 rounded-2xl bg-stone-900 text-[#FFEB3B] flex items-center justify-center font-bold text-2xl shadow-sm overflow-hidden shrink-0 border border-stone-800">
-            {userProfile.avatarUrl ? <img src={userProfile.avatarUrl} className="w-full h-full object-cover" /> : userProfile.avatar}
+          <div className="w-14 h-14 rounded-2xl bg-stone-900 text-[#FFEB3B] flex items-center justify-center font-bold text-2xl shadow-xs overflow-hidden shrink-0 border border-stone-800 group-hover:scale-105 transition-transform">
+            {userProfile.avatarUrl ? (
+              <img src={userProfile.avatarUrl} alt="avatar" referrerPolicy="no-referrer" className="w-full h-full object-cover" />
+            ) : (
+              <span>{userProfile.avatar}</span>
+            )}
           </div>
           <div>
-            <div className="font-bold text-lg text-stone-800 flex items-center gap-2">
-              <span>{userProfile.name}</span>
-              <span className="text-xs px-2 py-0.5 bg-stone-100 text-stone-600 rounded-md font-normal">Learner</span>
+            <div className="font-bold text-base text-stone-900 flex items-center gap-2">
+              <span>{userProfile.userName || userProfile.name}</span>
+              <span className="text-[11px] px-2 py-0.5 bg-stone-100 text-stone-600 rounded-md font-medium">Korean Learner</span>
+              {userProfile.userCallSign && (
+                <span className="text-[11px] px-2 py-0.5 bg-amber-50 text-amber-900 border border-amber-200 rounded-md font-semibold">
+                  称呼: {userProfile.userCallSign}
+                </span>
+              )}
             </div>
-            <div className="text-sm text-stone-500">{userProfile.status}</div>
+            <div className="text-xs text-stone-500 mt-0.5">{userProfile.status}</div>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setIsProfileModalOpen(true);
+          }}
+          className="px-3.5 py-2 bg-stone-100 group-hover:bg-amber-500 group-hover:text-white text-stone-700 text-xs font-bold rounded-xl transition-colors flex items-center gap-1.5 shrink-0"
+        >
+          <User size={14} />
+          <span>프로필 설정 (Edit)</span>
+        </button>
+      </div>
+
+      {isProfileModalOpen && (
+        <UserProfileModal
+          isOpen={isProfileModalOpen}
+          onClose={() => setIsProfileModalOpen(false)}
+          profile={userProfile}
+          onSave={(updated) => {
+            if (onUpdateUserProfile) {
+              onUpdateUserProfile(updated);
+            }
+          }}
+        />
+      )}
+
+      {/* SECTION 1: LLM API Configuration Center */}
+      <div className="bg-white p-6 rounded-2xl shadow-xs border border-stone-200 space-y-6">
+        <div className="flex items-center justify-between border-b border-stone-100 pb-3">
+          <div className="flex items-center gap-2.5 text-stone-900 font-bold">
+            <Server size={20} className="text-stone-900" />
+            <div className="flex flex-col">
+              <span className="text-base font-bold">LLM API Configuration (大模型接口配置)</span>
+              <span className="text-xs font-normal text-stone-500">支持 Gemini / Claude / OpenAI / DeepSeek / 自定义中转接口</span>
+            </div>
+          </div>
+          <span className="text-xs font-semibold px-2.5 py-1 bg-stone-100 text-stone-800 rounded-full border border-stone-200">
+            Real LLM Request
+          </span>
+        </div>
+
+        <div className="space-y-5">
+          {/* Provider Select */}
+          <div>
+            <label className="block text-xs font-bold text-stone-700 mb-1.5">
+              LLM Provider (模型服务商)
+            </label>
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+              {[
+                { id: 'gemini', label: 'Google Gemini' },
+                { id: 'anthropic', label: 'Claude (Anthropic)' },
+                { id: 'deepseek', label: 'DeepSeek' },
+                { id: 'openai', label: 'OpenAI' },
+                { id: 'custom', label: 'Custom (中转)' },
+              ].map((p) => {
+                const isSelected = llmConfig.provider === p.id;
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => handleSelectProvider(p.id as any)}
+                    className={`py-2 px-2.5 rounded-xl text-xs font-bold transition border text-center cursor-pointer ${
+                      isSelected
+                        ? 'bg-stone-900 text-white border-stone-900 shadow-xs'
+                        : 'bg-stone-50 text-stone-700 border-stone-200 hover:bg-stone-100'
+                    }`}
+                  >
+                    {p.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* API Key */}
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs font-bold text-stone-700 flex items-center gap-1.5">
+                <Key size={13} className="text-stone-500" />
+                <span>API Key</span>
+                <span className="text-[10px] text-stone-400 font-normal">（可输入或粘贴）</span>
+              </label>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowLlmKey(!showLlmKey)}
+                  className="text-[11px] text-stone-500 hover:text-stone-900 flex items-center gap-1 transition cursor-pointer"
+                  title={showLlmKey ? "隐藏密文" : "显示明文"}
+                >
+                  {showLlmKey ? <EyeOff size={13} /> : <Eye size={13} />}
+                  <span>{showLlmKey ? '隐藏' : '显示'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handlePasteToField((val) => handleUpdateLLMField('apiKey', val))}
+                  className="text-[11px] text-stone-700 bg-stone-100 hover:bg-stone-200 px-2 py-0.5 rounded-md flex items-center gap-1 transition cursor-pointer font-medium"
+                >
+                  <Clipboard size={12} />
+                  <span>剪贴板粘贴</span>
+                </button>
+              </div>
+            </div>
+            <div className="relative flex items-center">
+              <input
+                id="llm-api-key-input"
+                name="apiKey"
+                type={showLlmKey ? "text" : "password"}
+                autoComplete="off"
+                spellCheck={false}
+                placeholder={providerPresets[llmConfig.provider]?.placeholderKey || '请输入或粘贴 API Key...'}
+                value={llmConfig.apiKey || ''}
+                onChange={(e) => handleUpdateLLMField('apiKey', e.target.value)}
+                onPaste={(e) => {
+                  // Allow standard browser paste
+                  const pasted = e.clipboardData.getData('text');
+                  if (pasted) {
+                    handleUpdateLLMField('apiKey', pasted.trim());
+                  }
+                }}
+                className="w-full text-xs font-mono px-3.5 py-2.5 pr-8 rounded-xl border border-stone-300 bg-stone-50/70 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-stone-900 focus:border-stone-900 transition-all text-stone-900"
+              />
+              {Boolean(llmConfig.apiKey) && (
+                <button
+                  type="button"
+                  onClick={() => handleUpdateLLMField('apiKey', '')}
+                  className="absolute right-2.5 text-stone-400 hover:text-stone-600 p-1 cursor-pointer"
+                  title="清空"
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+            {llmConfig.provider === 'gemini' && !llmConfig.apiKey && (
+              <p className="mt-1.5 text-[11px] text-emerald-700 flex items-center gap-1 font-medium">
+                <span>✨ 默认使用系统内置 Gemini 引擎（留空即可直接免费畅聊伴学）</span>
+              </p>
+            )}
+            {llmConfig.provider === 'gemini' && Boolean(llmConfig.apiKey) && llmConfig.apiKey.startsWith('sk-') && (
+              <p className="mt-1.5 text-[11px] text-amber-700 bg-amber-50 p-2 rounded-lg border border-amber-200 flex items-center gap-1">
+                <span>⚠️ 提示：您填入的 Key 以 sk- 开头（多为 OpenAI 或 DeepSeek Key），Google Gemini 官方 Key 通常以 AQ.Ab... 或 AIzaSy... 开头。若使用代理或自建端点请配合在下方填写 Base URL。</span>
+              </p>
+            )}
+          </div>
+
+          {/* Base URL & Model Name */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-xs font-bold text-stone-700 flex items-center gap-1.5">
+                  <Globe size={13} className="text-stone-500" />
+                  <span>Base URL / Endpoint (可选)</span>
+                </label>
+                <button
+                  type="button"
+                  onClick={() => handlePasteToField((val) => handleUpdateLLMField('baseURL', val))}
+                  className="text-[10px] text-stone-500 hover:text-stone-800 flex items-center gap-0.5 cursor-pointer"
+                >
+                  <Clipboard size={11} />
+                  <span>粘贴</span>
+                </button>
+              </div>
+              <div className="relative flex items-center">
+                <input
+                  id="llm-base-url-input"
+                  name="baseURL"
+                  type="text"
+                  autoComplete="off"
+                  spellCheck={false}
+                  placeholder={providerPresets[llmConfig.provider]?.defaultBaseURL || 'https://api.openai.com/v1'}
+                  value={llmConfig.baseURL || ''}
+                  onChange={(e) => handleUpdateLLMField('baseURL', e.target.value)}
+                  onPaste={(e) => {
+                    const pasted = e.clipboardData.getData('text');
+                    if (pasted) handleUpdateLLMField('baseURL', pasted.trim());
+                  }}
+                  className="w-full text-xs font-mono px-3.5 py-2.5 pr-8 rounded-xl border border-stone-300 bg-stone-50/70 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-stone-900 focus:border-stone-900 transition-all text-stone-900"
+                />
+                {Boolean(llmConfig.baseURL) && (
+                  <button
+                    type="button"
+                    onClick={() => handleUpdateLLMField('baseURL', '')}
+                    className="absolute right-2.5 text-stone-400 hover:text-stone-600 p-1 cursor-pointer"
+                    title="清空"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-xs font-bold text-stone-700 flex items-center gap-1.5">
+                  <Sliders size={13} className="text-stone-500" />
+                  <span>Model Name (模型标识)</span>
+                </label>
+                <button
+                  type="button"
+                  onClick={() => handlePasteToField((val) => handleUpdateLLMField('model', val))}
+                  className="text-[10px] text-stone-500 hover:text-stone-800 flex items-center gap-0.5 cursor-pointer"
+                >
+                  <Clipboard size={11} />
+                  <span>粘贴</span>
+                </button>
+              </div>
+              <div className="relative flex items-center">
+                <input
+                  id="llm-model-name-input"
+                  name="model"
+                  type="text"
+                  autoComplete="off"
+                  spellCheck={false}
+                  placeholder={providerPresets[llmConfig.provider]?.defaultModel || 'gpt-4o'}
+                  value={llmConfig.model || ''}
+                  onChange={(e) => handleUpdateLLMField('model', e.target.value)}
+                  onPaste={(e) => {
+                    const pasted = e.clipboardData.getData('text');
+                    if (pasted) handleUpdateLLMField('model', pasted.trim());
+                  }}
+                  className="w-full text-xs font-mono px-3.5 py-2.5 pr-8 rounded-xl border border-stone-300 bg-stone-50/70 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-stone-900 focus:border-stone-900 transition-all text-stone-900"
+                />
+                {Boolean(llmConfig.model) && (
+                  <button
+                    type="button"
+                    onClick={() => handleUpdateLLMField('model', '')}
+                    className="absolute right-2.5 text-stone-400 hover:text-stone-600 p-1 cursor-pointer"
+                    title="清空"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Quick Model Chips */}
+          {providerPresets[llmConfig.provider]?.popularModels && (
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-[10px] text-stone-400 font-semibold uppercase">推荐模型:</span>
+              {providerPresets[llmConfig.provider].popularModels.map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => handleUpdateLLMField('model', m)}
+                  className={`text-[11px] px-2 py-0.5 rounded-md border transition cursor-pointer font-mono ${
+                    llmConfig.model === m
+                      ? 'bg-stone-900 text-white border-stone-900 font-bold'
+                      : 'bg-stone-100 text-stone-600 border-stone-200 hover:bg-stone-200'
+                  }`}
+                >
+                  {m}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Test Button & Status */}
+          <div className="pt-2 flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+            <button
+              type="button"
+              onClick={handleTestLLM}
+              disabled={isTestingLLM}
+              className="flex items-center justify-center gap-2 py-2.5 px-5 bg-stone-900 text-white rounded-xl text-xs font-bold hover:bg-stone-800 transition shadow-xs disabled:opacity-50 cursor-pointer shrink-0"
+            >
+              <Zap size={14} className={isTestingLLM ? 'animate-spin text-amber-300' : 'text-amber-400'} />
+              <span>{isTestingLLM ? '正在连接测试...' : 'Test Connection (测试连接)'}</span>
+            </button>
+
+            {llmTestStatus && (
+              <div
+                className={`flex-1 p-2.5 px-3 rounded-xl border text-xs flex items-center gap-2 ${
+                  llmTestStatus.ok
+                    ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                    : 'bg-rose-50 text-rose-800 border-rose-200'
+                }`}
+              >
+                {llmTestStatus.ok ? <CheckCircle2 size={16} className="shrink-0 text-emerald-600" /> : <AlertCircle size={16} className="shrink-0 text-rose-600" />}
+                <span className="break-all font-medium">{llmTestStatus.message}</span>
+              </div>
+            )}
           </div>
         </div>
       </div>
 
-      {/* MiniMax Voice Cloning Engine Configuration (SECTION 4) */}
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-stone-200/70 space-y-6">
+      {/* SECTION 2: MiniMax Voice Cloning Engine */}
+      <div className="bg-white p-6 rounded-2xl shadow-xs border border-stone-200 space-y-6">
         <div className="flex items-center justify-between border-b border-stone-100 pb-3">
-          <div className="flex items-center gap-2.5 text-stone-800 font-bold">
-            <Mic size={20} className="text-indigo-600" />
+          <div className="flex items-center gap-2.5 text-stone-900 font-bold">
+            <Mic size={20} className="text-stone-900" />
             <div className="flex flex-col">
-              <span className="text-base">MiniMax Voice Clone Pipeline</span>
+              <span className="text-base font-bold">MiniMax Voice Clone Pipeline</span>
               <span className="text-xs font-normal text-stone-500">7位专属爱豆声音克隆与音色控制台</span>
             </div>
           </div>
-          <span className="text-xs font-semibold px-2.5 py-1 bg-indigo-50 text-indigo-700 rounded-full border border-indigo-200">
+          <span className="text-xs font-semibold px-2.5 py-1 bg-stone-100 text-stone-800 rounded-full border border-stone-200">
             T2A Engine
           </span>
         </div>
@@ -125,42 +632,112 @@ export const SettingsView: React.FC<Props> = ({ settings, onUpdateSettings, user
         {/* API Credentials */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div>
-            <label className="block text-xs font-bold text-stone-700 mb-1.5 flex items-center gap-1.5">
-              <Key size={13} />
-              MiniMax Group ID
-            </label>
-            <input
-              type="text"
-              placeholder="e.g. 1823901..."
-              value={mmConfig.group_id || ''}
-              onChange={(e) => handleUpdateMinimaxConfig({ group_id: e.target.value })}
-              className="w-full text-xs font-mono px-3 py-2.5 rounded-xl border border-stone-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-stone-50/50"
-            />
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs font-bold text-stone-700 flex items-center gap-1.5">
+                <Key size={13} className="text-stone-500" />
+                <span>MiniMax Group ID</span>
+              </label>
+              <button
+                type="button"
+                onClick={() => handlePasteToField((val) => handleUpdateMinimaxField('group_id', val))}
+                className="text-[10px] text-stone-500 hover:text-stone-800 flex items-center gap-0.5 cursor-pointer"
+              >
+                <Clipboard size={11} />
+                <span>粘贴</span>
+              </button>
+            </div>
+            <div className="relative flex items-center">
+              <input
+                id="minimax-group-id-input"
+                name="group_id"
+                type="text"
+                autoComplete="off"
+                spellCheck={false}
+                placeholder="e.g. 1823901..."
+                value={mmConfig.group_id || ''}
+                onChange={(e) => handleUpdateMinimaxField('group_id', e.target.value)}
+                onPaste={(e) => {
+                  const pasted = e.clipboardData.getData('text');
+                  if (pasted) handleUpdateMinimaxField('group_id', pasted.trim());
+                }}
+                className="w-full text-xs font-mono px-3.5 py-2.5 pr-8 rounded-xl border border-stone-300 bg-stone-50/70 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-stone-900 focus:border-stone-900 transition-all text-stone-900"
+              />
+              {Boolean(mmConfig.group_id) && (
+                <button
+                  type="button"
+                  onClick={() => handleUpdateMinimaxField('group_id', '')}
+                  className="absolute right-2.5 text-stone-400 hover:text-stone-600 p-1 cursor-pointer"
+                  title="清空"
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs font-bold text-stone-700 flex items-center gap-1.5">
+                <Key size={13} className="text-stone-500" />
+                <span>MiniMax API Key</span>
+              </label>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowMmKey(!showMmKey)}
+                  className="text-[10px] text-stone-500 hover:text-stone-900 flex items-center gap-0.5 cursor-pointer"
+                >
+                  {showMmKey ? <EyeOff size={11} /> : <Eye size={11} />}
+                  <span>{showMmKey ? '隐藏' : '显示'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handlePasteToField((val) => handleUpdateMinimaxField('api_key', val))}
+                  className="text-[10px] text-stone-500 hover:text-stone-800 flex items-center gap-0.5 cursor-pointer"
+                >
+                  <Clipboard size={11} />
+                  <span>粘贴</span>
+                </button>
+              </div>
+            </div>
+            <div className="relative flex items-center">
+              <input
+                id="minimax-api-key-input"
+                name="api_key"
+                type={showMmKey ? "text" : "password"}
+                autoComplete="off"
+                spellCheck={false}
+                placeholder="eyJhbGciOi..."
+                value={mmConfig.api_key || ''}
+                onChange={(e) => handleUpdateMinimaxField('api_key', e.target.value)}
+                onPaste={(e) => {
+                  const pasted = e.clipboardData.getData('text');
+                  if (pasted) handleUpdateMinimaxField('api_key', pasted.trim());
+                }}
+                className="w-full text-xs font-mono px-3.5 py-2.5 pr-8 rounded-xl border border-stone-300 bg-stone-50/70 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-stone-900 focus:border-stone-900 transition-all text-stone-900"
+              />
+              {Boolean(mmConfig.api_key) && (
+                <button
+                  type="button"
+                  onClick={() => handleUpdateMinimaxField('api_key', '')}
+                  className="absolute right-2.5 text-stone-400 hover:text-stone-600 p-1 cursor-pointer"
+                  title="清空"
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
           </div>
 
           <div>
             <label className="block text-xs font-bold text-stone-700 mb-1.5 flex items-center gap-1.5">
-              <Key size={13} />
-              MiniMax API Key
-            </label>
-            <input
-              type="password"
-              placeholder="eyJhbGciOi..."
-              value={mmConfig.api_key || ''}
-              onChange={(e) => handleUpdateMinimaxConfig({ api_key: e.target.value })}
-              className="w-full text-xs font-mono px-3 py-2.5 rounded-xl border border-stone-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-stone-50/50"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-bold text-stone-700 mb-1.5 flex items-center gap-1.5">
-              <Sliders size={13} />
-              Model Selection
+              <Sliders size={13} className="text-stone-500" />
+              <span>Model Selection</span>
             </label>
             <select
               value={mmConfig.model || 'speech-01-turbo'}
-              onChange={(e) => handleUpdateMinimaxConfig({ model: e.target.value })}
-              className="w-full text-xs font-medium px-3 py-2.5 rounded-xl border border-stone-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+              onChange={(e) => handleUpdateMinimaxField('model', e.target.value)}
+              className="w-full text-xs font-medium px-3 py-2.5 rounded-xl border border-stone-300 bg-white focus:outline-hidden focus:ring-2 focus:ring-stone-900 focus:border-stone-900 transition-all text-stone-900"
             >
               <option value="speech-01-turbo">speech-01-turbo (Recommended)</option>
               <option value="speech-01-hd">speech-01-hd (High Definition)</option>
@@ -177,19 +754,25 @@ export const SettingsView: React.FC<Props> = ({ settings, onUpdateSettings, user
 
           {/* Idol Selector Pills */}
           <div className="flex flex-wrap gap-2">
-            {PRESET_COMPANIONS.map((idol) => {
+            {companions.map((idol) => {
               const isActive = activeVoiceTab === idol.id;
               return (
                 <button
                   key={idol.id}
+                  type="button"
                   onClick={() => setActiveVoiceTab(idol.id)}
-                  className={`px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 border ${
+                  className={`px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 border cursor-pointer ${
                     isActive
-                      ? 'bg-stone-900 text-white border-stone-900 shadow-sm'
+                      ? 'bg-stone-900 text-white border-stone-900 shadow-xs'
                       : 'bg-stone-50 text-stone-600 border-stone-200 hover:bg-stone-100'
                   }`}
                 >
-                  <span className="text-base">{idol.avatar}</span>
+                  <img
+                    src={idol.customAvatarUrl || idol.avatar}
+                    alt={idol.name_zh || idol.name_ko}
+                    referrerPolicy="no-referrer"
+                    className="w-6 h-6 rounded-full object-cover border border-slate-200"
+                  />
                   <span>{idol.name_zh}</span>
                   <span className="text-[10px] opacity-75 font-normal">({idol.badge})</span>
                 </button>
@@ -199,7 +782,7 @@ export const SettingsView: React.FC<Props> = ({ settings, onUpdateSettings, user
 
           {/* Active Idol Slot Tuning Box */}
           {(() => {
-            const currentIdol = PRESET_COMPANIONS.find(c => c.id === activeVoiceTab) || PRESET_COMPANIONS[0];
+            const currentIdol = companions.find(c => c.id === activeVoiceTab) || PRESET_COMPANIONS.find(c => c.id === activeVoiceTab) || PRESET_COMPANIONS[0];
             const slot = mmConfig.voice_slots?.[currentIdol.id] || {
               voice_id: currentIdol.voice_slot || `voice_${currentIdol.id}_001`,
               speed: currentIdol.tts_rate || 1.0,
@@ -210,36 +793,61 @@ export const SettingsView: React.FC<Props> = ({ settings, onUpdateSettings, user
             return (
               <div className="bg-stone-50 p-4 rounded-xl border border-stone-200 space-y-4">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="text-2xl">{currentIdol.avatar}</span>
+                  <div className="flex items-center gap-3.5">
+                    <img
+                      src={currentIdol.customAvatarUrl || currentIdol.avatar}
+                      alt={currentIdol.name_zh || currentIdol.name_ko}
+                      referrerPolicy="no-referrer"
+                      className="w-14 h-14 rounded-full object-cover border border-slate-200 shadow-sm"
+                    />
                     <div>
                       <div className="text-sm font-bold text-stone-800">
                         {currentIdol.name_ko} · {currentIdol.name_zh} ({currentIdol.badge})
                       </div>
-                      <div className="text-xs text-stone-500">{currentIdol.voice_desc}</div>
+                      <div className="text-xs text-stone-500 mt-0.5">{currentIdol.voice_desc}</div>
                     </div>
                   </div>
 
                   <button
+                    type="button"
                     onClick={() => testIdolVoice(currentIdol.id)}
                     disabled={testingAudio}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700 transition shadow-sm disabled:opacity-50"
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-stone-900 text-white rounded-lg text-xs font-bold hover:bg-stone-800 transition shadow-xs disabled:opacity-50 cursor-pointer"
                   >
-                    <Play size={13} className={testingAudio ? "animate-spin" : ""} />
-                    <span>{testingAudio ? 'Synthesizing...' : 'Test Voice Voice (试听音色)'}</span>
+                    <Play size={13} className={testingAudio ? "animate-spin text-amber-300" : ""} />
+                    <span>{testingAudio ? 'Synthesizing...' : 'Test Voice (试听音色)'}</span>
                   </button>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
                   <div>
-                    <label className="block text-[11px] font-bold text-stone-600 mb-1">Cloned Voice ID</label>
-                    <input
-                      type="text"
-                      value={slot.voice_id}
-                      onChange={(e) => handleUpdateVoiceSlot(currentIdol.id, { voice_id: e.target.value })}
-                      placeholder="voice_id_xxx"
-                      className="w-full text-xs font-mono px-2.5 py-1.5 rounded-lg border border-stone-200 bg-white"
-                    />
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-[11px] font-bold text-stone-600">Cloned Voice ID</label>
+                      <button
+                        type="button"
+                        onClick={() => handlePasteToField((val) => handleUpdateVoiceSlot(currentIdol.id, { voice_id: val }))}
+                        className="text-[9px] text-stone-500 hover:text-stone-800 flex items-center gap-0.5 cursor-pointer"
+                      >
+                        <Clipboard size={10} />
+                        <span>粘贴</span>
+                      </button>
+                    </div>
+                    <div className="relative flex items-center">
+                      <input
+                        id={`voice-slot-id-${currentIdol.id}`}
+                        type="text"
+                        autoComplete="off"
+                        spellCheck={false}
+                        value={slot.voice_id}
+                        onChange={(e) => handleUpdateVoiceSlot(currentIdol.id, { voice_id: e.target.value })}
+                        onPaste={(e) => {
+                          const pasted = e.clipboardData.getData('text');
+                          if (pasted) handleUpdateVoiceSlot(currentIdol.id, { voice_id: pasted.trim() });
+                        }}
+                        placeholder="voice_id_xxx"
+                        className="w-full text-xs font-mono px-2.5 py-1.5 rounded-lg border border-stone-300 bg-white focus:outline-hidden focus:ring-2 focus:ring-stone-900 transition-all text-stone-900"
+                      />
+                    </div>
                   </div>
 
                   <div>
@@ -251,7 +859,7 @@ export const SettingsView: React.FC<Props> = ({ settings, onUpdateSettings, user
                       step="0.05"
                       value={slot.speed || 1.0}
                       onChange={(e) => handleUpdateVoiceSlot(currentIdol.id, { speed: parseFloat(e.target.value) })}
-                      className="w-full accent-indigo-600"
+                      className="w-full accent-stone-800 cursor-pointer"
                     />
                   </div>
 
@@ -264,7 +872,7 @@ export const SettingsView: React.FC<Props> = ({ settings, onUpdateSettings, user
                       step="1"
                       value={slot.pitch || 0}
                       onChange={(e) => handleUpdateVoiceSlot(currentIdol.id, { pitch: parseInt(e.target.value) })}
-                      className="w-full accent-indigo-600"
+                      className="w-full accent-stone-800 cursor-pointer"
                     />
                   </div>
 
@@ -273,7 +881,7 @@ export const SettingsView: React.FC<Props> = ({ settings, onUpdateSettings, user
                     <select
                       value={slot.emotion || 'natural'}
                       onChange={(e) => handleUpdateVoiceSlot(currentIdol.id, { emotion: e.target.value })}
-                      className="w-full text-xs px-2 py-1.5 rounded-lg border border-stone-200 bg-white"
+                      className="w-full text-xs px-2 py-1.5 rounded-lg border border-stone-300 bg-white focus:outline-hidden focus:ring-2 focus:ring-stone-900 transition-all text-stone-900"
                     >
                       <option value="natural">Natural (自然)</option>
                       <option value="cool_empathetic">Cool & Empathetic (松弛知心)</option>
@@ -292,16 +900,17 @@ export const SettingsView: React.FC<Props> = ({ settings, onUpdateSettings, user
         </div>
       </div>
 
-      {/* Theme Settings */}
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-stone-200/70 space-y-4">
+      {/* SECTION 3: App Theme & Study Preferences */}
+      <div className="bg-white p-6 rounded-2xl shadow-xs border border-stone-200 space-y-4">
         <div className="flex items-center gap-2 text-stone-800 font-bold mb-2">
           <Palette size={20} className="text-stone-800" />
           <span>App Theme</span>
         </div>
         <div className="grid grid-cols-3 gap-4">
           <button 
+            type="button"
             onClick={() => onUpdateSettings({...settings, theme: 'default'})}
-            className={`p-4 rounded-xl border-2 transition-all flex flex-col items-center gap-2 ${settings.theme === 'default' ? 'border-stone-900 bg-stone-50' : 'border-stone-200 bg-white hover:bg-stone-50'}`}
+            className={`p-4 rounded-xl border-2 transition-all flex flex-col items-center gap-2 cursor-pointer ${settings.theme === 'default' ? 'border-stone-900 bg-stone-50' : 'border-stone-200 bg-white hover:bg-stone-50'}`}
           >
             <div className="w-10 h-10 rounded-full border border-stone-300 flex items-center justify-center text-stone-800 font-bold">
               Aa
@@ -310,8 +919,9 @@ export const SettingsView: React.FC<Props> = ({ settings, onUpdateSettings, user
           </button>
           
           <button 
+            type="button"
             onClick={() => onUpdateSettings({...settings, theme: 'kkt'})}
-            className={`p-4 rounded-xl border-2 transition-all flex flex-col items-center gap-2 ${settings.theme === 'kkt' ? 'border-[#FFEB3B] bg-[#FFEB3B]/10' : 'border-stone-200 bg-white hover:bg-stone-50'}`}
+            className={`p-4 rounded-xl border-2 transition-all flex flex-col items-center gap-2 cursor-pointer ${settings.theme === 'kkt' ? 'border-[#FFEB3B] bg-[#FFEB3B]/10' : 'border-stone-200 bg-white hover:bg-stone-50'}`}
           >
             <div className="w-10 h-10 rounded-[14px] bg-[#FFEB3B] flex items-center justify-center text-stone-900 font-bold text-xs">
               TALK
@@ -320,8 +930,9 @@ export const SettingsView: React.FC<Props> = ({ settings, onUpdateSettings, user
           </button>
 
           <button 
+            type="button"
             onClick={() => onUpdateSettings({...settings, theme: 'wechat'})}
-            className={`p-4 rounded-xl border-2 transition-all flex flex-col items-center gap-2 ${settings.theme === 'wechat' ? 'border-[#07C160] bg-[#07C160]/10' : 'border-stone-200 bg-white hover:bg-stone-50'}`}
+            className={`p-4 rounded-xl border-2 transition-all flex flex-col items-center gap-2 cursor-pointer ${settings.theme === 'wechat' ? 'border-[#07C160] bg-[#07C160]/10' : 'border-stone-200 bg-white hover:bg-stone-50'}`}
           >
             <div className="w-10 h-10 rounded-[14px] bg-[#07C160] flex items-center justify-center text-white font-bold text-xs">
               微信
@@ -331,8 +942,8 @@ export const SettingsView: React.FC<Props> = ({ settings, onUpdateSettings, user
         </div>
       </div>
 
-      {/* Study Goals Settings */}
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-stone-200/70 space-y-4">
+      {/* SECTION 4: Study Goals Settings */}
+      <div className="bg-white p-6 rounded-2xl shadow-xs border border-stone-200 space-y-4">
         <div className="flex items-center gap-2 text-stone-800 font-bold mb-2">
           <Target size={20} className="text-emerald-600" />
           <span>Daily Recall & Study Goals</span>
@@ -347,35 +958,38 @@ export const SettingsView: React.FC<Props> = ({ settings, onUpdateSettings, user
               step="10"
               value={settings.dailyVocabGoal}
               onChange={(e) => onUpdateSettings({...settings, dailyVocabGoal: Number(e.target.value)})}
-              className="flex-1 accent-stone-800"
+              className="flex-1 accent-stone-800 cursor-pointer"
             />
             <span className="font-bold text-stone-800 w-16 text-right text-sm">{settings.dailyVocabGoal} words/day</span>
           </div>
         </div>
       </div>
 
-      {/* Language Settings */}
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-stone-200/70 space-y-4">
+      {/* SECTION 5: Language Settings */}
+      <div className="bg-white p-6 rounded-2xl shadow-xs border border-stone-200 space-y-4">
         <div className="flex items-center gap-2 text-stone-800 font-bold mb-2">
           <Globe size={20} className="text-blue-600" />
           <span>Bilingual Translation Mode</span>
         </div>
         <div className="flex bg-stone-100 p-1 rounded-xl">
           <button
+            type="button"
             onClick={() => onUpdateSettings({...settings, languageMode: 'bilingual'})}
-            className={`flex-1 py-2 text-xs font-bold rounded-lg transition-colors ${settings.languageMode === 'bilingual' ? 'bg-white shadow-sm text-stone-900' : 'text-stone-500 hover:text-stone-700'}`}
+            className={`flex-1 py-2 text-xs font-bold rounded-lg transition-colors cursor-pointer ${settings.languageMode === 'bilingual' ? 'bg-white shadow-xs text-stone-900' : 'text-stone-500 hover:text-stone-700'}`}
           >
             Bilingual (韩文+中文)
           </button>
           <button
+            type="button"
             onClick={() => onUpdateSettings({...settings, languageMode: 'zh'})}
-            className={`flex-1 py-2 text-xs font-bold rounded-lg transition-colors ${settings.languageMode === 'zh' ? 'bg-white shadow-sm text-stone-900' : 'text-stone-500 hover:text-stone-700'}`}
+            className={`flex-1 py-2 text-xs font-bold rounded-lg transition-colors cursor-pointer ${settings.languageMode === 'zh' ? 'bg-white shadow-xs text-stone-900' : 'text-stone-500 hover:text-stone-700'}`}
           >
             Simplified Chinese
           </button>
           <button
+            type="button"
             onClick={() => onUpdateSettings({...settings, languageMode: 'en'})}
-            className={`flex-1 py-2 text-xs font-bold rounded-lg transition-colors ${settings.languageMode === 'en' ? 'bg-white shadow-sm text-stone-900' : 'text-stone-500 hover:text-stone-700'}`}
+            className={`flex-1 py-2 text-xs font-bold rounded-lg transition-colors cursor-pointer ${settings.languageMode === 'en' ? 'bg-white shadow-xs text-stone-900' : 'text-stone-500 hover:text-stone-700'}`}
           >
             English
           </button>

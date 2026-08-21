@@ -15,8 +15,15 @@ export interface MiniMaxConfig {
 export interface Companion {
   id: string;
   name_ko: string;
+  name_kr?: string;
   name_zh: string;
   name_en: string;
+  group?: string;
+  birth?: string;
+  role?: string;
+  personality_traits?: string[];
+  tone_style?: string;
+  system_prompt?: string;
   avatar: string;
   avatar_bg?: string;
   color?: string;
@@ -168,10 +175,18 @@ export interface CompanionSparkRecord {
   totalInteractions: number;
 }
 
+export interface LLMConfig {
+  provider: 'anthropic' | 'openai' | 'deepseek' | 'gemini' | 'custom';
+  apiKey: string;
+  baseURL?: string;
+  model: string;
+}
+
 export interface AppSettings {
   theme: 'default' | 'kkt' | 'wechat';
   dailyVocabGoal: number;
   languageMode: 'bilingual' | 'zh' | 'en';
+  api_config?: LLMConfig;
   minimax_config?: MiniMaxConfig;
 }
 
@@ -180,6 +195,8 @@ export interface UserProfile {
   status: string;
   avatar: string;
   avatarUrl?: string;
+  userName?: string;
+  userCallSign?: string;
 }
 
 export interface StudyPlanDay {
