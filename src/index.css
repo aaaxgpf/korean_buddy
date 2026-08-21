@@ -1,0 +1,67 @@
+@import "tailwindcss";
+
+
+
+@layer base {
+  body {
+    
+    background-color: #FAF9F6;
+    color: #2D2D2D;
+  }
+
+  h1, h2, h3, .font-serif-kr {
+    
+  }
+}
+
+@keyframes fadeOut {
+  from { opacity: 1; }
+  to { opacity: 0; visibility: hidden; }
+}
+
+.animate-fadeOut {
+  animation: fadeOut 0.5s ease-in-out forwards;
+}
+
+/* Custom scrollbar matching Artistic Flair */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #FAF9F6;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #D5D1C8;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #B5A69A;
+}
+
+/* Hide scrollbar for Chrome, Safari and Opera */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Hide scrollbar for IE, Edge and Firefox */
+.no-scrollbar {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+
+/* Global scrollbar hide as requested (transparent sliders) */
+::-webkit-scrollbar {
+    width: 0px;
+    background: transparent; 
+}
+::-webkit-scrollbar-thumb {
+    background: transparent;
+}
+* {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none;
+}

@@ -1,0 +1,6 @@
+{
+  "name": "Korean Buddy - 韩语多维学习与伴学伙伴",
+  "description": "利用中英双语高效学习韩语，集成语法解析器、词汇记忆卡片（含延世/首尔大/TOPIK 1-6/饭圈/日常词书）、听写听力训练、每日情境口语练习，并支持与自选及自定义陪伴学习爱豆（李贤在、孙英宰、金泳勋、大崎将太郎、郑成灿、申惟）进行沉浸式对话、每日续火花、独立自选词汇语法解析与原声朗读收藏。",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

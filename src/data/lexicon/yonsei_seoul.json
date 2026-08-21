@@ -1,0 +1,72 @@
+[
+  {
+    "id": "ys_001",
+    "category": "YONSEI_SEOUL",
+    "word": "-기 마련이다",
+    "hanja_or_origin": "문법/표현 (延世·首尔大必考)",
+    "pos": "문법 패턴",
+    "pronunciation": "-기 마련이다",
+    "definition_zh": "总是会...，必然会...",
+    "example_kr": "열심히 연습하면 실력은 늘기 마련이에요.",
+    "example_zh": "只要认真练习，实力必然会有所提高。",
+    "safety_level": "ALL_SAFE",
+    "mastered": false,
+    "mistake_count": 0
+  },
+  {
+    "id": "ys_002",
+    "category": "YONSEI_SEOUL",
+    "word": "마음을 먹다",
+    "hanja_or_origin": "관용구 (惯用型)",
+    "pos": "관용구",
+    "pronunciation": "마음을 먹따",
+    "definition_zh": "下定决心，决意",
+    "example_kr": "한국어능력시험 고급에 합격하기로 굳게 마음을 먹었어요.",
+    "example_zh": "我下定决心一定要考过韩语能力考高级。",
+    "safety_level": "ALL_SAFE",
+    "mastered": false,
+    "mistake_count": 0
+  },
+  {
+    "id": "ys_003",
+    "category": "YONSEI_SEOUL",
+    "word": "눈코 뜰 새 없다",
+    "hanja_or_origin": "관용구 (惯用型)",
+    "pos": "관용구",
+    "pronunciation": "눈코 뜰 새 업따",
+    "definition_zh": "忙得不可开交 (连睁眼睁鼻的空闲都没有)",
+    "example_kr": "컴백 준비 때문에 요즘 눈코 뜰 새 없이 바빠요.",
+    "example_zh": "因为准备回归，最近忙得不可开交。",
+    "safety_level": "ALL_SAFE",
+    "mastered": false,
+    "mistake_count": 0
+  },
+  {
+    "id": "ys_004",
+    "category": "YONSEI_SEOUL",
+    "word": "-을/를 비롯하여",
+    "hanja_or_origin": "문법 표현",
+    "pos": "문법 패턴",
+    "pronunciation": "-을 비롯하여",
+    "definition_zh": "以...为首，包括...在内",
+    "example_kr": "서울을 비롯하여 전국 각지에서 콘서트가 열립니다.",
+    "example_zh": "以首尔为首，全国各地都将举办演唱会。",
+    "safety_level": "ALL_SAFE",
+    "mastered": false,
+    "mistake_count": 0
+  },
+  {
+    "id": "ys_005",
+    "category": "YONSEI_SEOUL",
+    "word": "발 벗고 나서다",
+    "hanja_or_origin": "관용구 (惯用型)",
+    "pos": "관용구",
+    "pronunciation": "발 벋고 나서다",
+    "definition_zh": "挺身而出，全力以赴相助",
+    "example_kr": "친구가 곤란한 일을 겪자 모두 발 벗고 나섰다.",
+    "example_zh": "朋友遇到困难时，大家都挺身而出全力相助。",
+    "safety_level": "ALL_SAFE",
+    "mastered": false,
+    "mistake_count": 0
+  }
+]
