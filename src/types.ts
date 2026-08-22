@@ -60,6 +60,8 @@ export interface ChatMessage {
   grammar_points?: GrammarPointItem[];
   learning_tip?: string;
   isBookmarked?: boolean;
+  isPinned?: boolean;
+  isMemory?: boolean;
   isRead?: boolean;
   [key: string]: any;
 }
@@ -186,6 +188,7 @@ export interface AppSettings {
   theme: 'default' | 'kkt' | 'wechat';
   dailyVocabGoal: number;
   languageMode: 'bilingual' | 'zh' | 'en';
+  proactiveMessagesEnabled?: boolean;
   api_config?: LLMConfig;
   minimax_config?: MiniMaxConfig;
 }

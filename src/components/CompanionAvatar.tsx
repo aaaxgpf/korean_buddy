@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Companion } from '../types';
+import { IDOL_PHOTO_AVATARS } from '../data/companions';
 
 interface CompanionAvatarProps {
   companion?: Partial<Companion> | null;
@@ -17,41 +18,34 @@ export const CompanionAvatar: React.FC<CompanionAvatarProps> = ({
   imgClassName = ''
 }) => {
   const [hasError, setHasError] = useState(false);
-  const avatar = companion?.customAvatarUrl || companion?.avatar;
-  const name = companion?.remark || companion?.name_zh || companion?.name_ko || companion?.name_kr || 'Buddy';
-
+  const charId = companion?.id || 'hyunjae';
+  const defaultPhoto = IDOL_PHOTO_AVATARS[charId] || IDOL_PHOTO_AVATARS.hyunjae;
+  
+  // Prioritize custom avatar, then companion avatar if valid URL, then default idol photo
+  const rawAvatar = companion?.customAvatarUrl || companion?.avatar;
   const isUrl = Boolean(
-    avatar &&
-    (avatar.startsWith('http://') ||
-      avatar.startsWith('https://') ||
-      avatar.startsWith('/') ||
-      avatar.startsWith('data:'))
+    rawAvatar &&
+    (rawAvatar.startsWith('http://') ||
+      rawAvatar.startsWith('https://') ||
+      rawAvatar.startsWith('/') ||
+      rawAvatar.startsWith('data:'))
   );
-
-  // If avatar is an emoji/short symbol (not URL), display the symbol
-  const isEmojiOrSymbol = Boolean(avatar && !isUrl && avatar.length <= 4);
+  
+  const finalSrc = (!hasError && isUrl) ? rawAvatar! : defaultPhoto;
+  const name = companion?.remark || companion?.name_ko || companion?.name_kr || 'Buddy';
 
   return (
     <div
-      className={`rounded-full overflow-hidden shrink-0 flex-shrink-0 bg-stone-100 border border-slate-200 shadow-sm relative flex items-center justify-center select-none ${sizeClassName} ${className}`}
+      className={`rounded-lg overflow-hidden shrink-0 flex-shrink-0 bg-stone-100 border border-stone-200/80 shadow-xs relative flex items-center justify-center select-none ${sizeClassName} ${className}`}
     >
-      {isUrl && !hasError ? (
-        <img
-          src={avatar}
-          alt={alt || name}
-          referrerPolicy="no-referrer"
-          onError={() => setHasError(true)}
-          className={`w-full h-full object-cover rounded-full flex-shrink-0 ${imgClassName}`}
-        />
-      ) : isEmojiOrSymbol ? (
-        <div className="w-full h-full rounded-full flex items-center justify-center text-xl bg-stone-100 text-stone-700">
-          {avatar}
-        </div>
-      ) : (
-        <div className="w-full h-full rounded-full bg-gradient-to-br from-stone-100 to-stone-200 text-stone-700 font-bold flex items-center justify-center text-xs tracking-tight">
-          {name.slice(0, 2)}
-        </div>
-      )}
+      <img
+        src={finalSrc}
+        alt={alt || name}
+        referrerPolicy="no-referrer"
+        onError={() => setHasError(true)}
+        className={`w-full h-full object-cover rounded-lg flex-shrink-0 ${imgClassName}`}
+      />
     </div>
   );
 };
+

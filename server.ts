@@ -582,42 +582,73 @@ app.post("/api/test-llm", async (req, res) => {
 
 // Companion Chat endpoint - Full multi-turn live LLM roleplay for all 7 idols
 app.post("/api/chat", async (req, res) => {
-  const { character, messages, userNickname, userName, userCallSign, languageMode = "bilingual", imageBase64, imageMime, videoLink, videoInfo, clientTemporal, apiConfig } = req.body;
+  const { character, messages, userNickname, userName, userCallSign, languageMode = "bilingual", imageBase64, imageMime, videoLink, videoInfo, clientTemporal, apiConfig, pinnedMemories: customPinnedMemories } = req.body;
   const temporal = computeTemporalContext(clientTemporal);
 
   try {
     const charId = character?.id || "eric";
     const effectiveUserName = userName || userNickname || "사용자";
-    const effectiveCallSign = userCallSign || userNickname || character?.userNickname || "너";
+    const effectiveCallSign = userCallSign || (userNickname && userNickname !== '더比 (THE B)' && userNickname !== '브리즈 (BRIIZE)' && userNickname !== '42 (사이)' ? userNickname : undefined) || character?.userNickname || "너";
+
+    // Extract all pinned / core memories
+    const allPinnedMemories: string[] = Array.isArray(customPinnedMemories) && customPinnedMemories.length > 0
+      ? customPinnedMemories
+      : (messages || [])
+          .filter((m: any) => m.isPinned || m.isMemory)
+          .map((m: any) => m.role === 'user' ? `User: ${m.content}` : `${character?.name_kr || character?.name_ko || 'Idol'}: ${m.korean || m.content}`)
+          .filter(Boolean);
 
     const personalityTraits = Array.isArray(character?.personality_traits)
       ? character.personality_traits.map((t: string) => `- ${t}`).join('\n')
       : '';
 
-    const systemPrompt = `[System Instruction: You are roleplaying as Korean idols in 'Korean Buddy', a Korean learning and companion app. Always strictly adhere to the character's real-life personality, vocal tone, and speaking habits. Never use greasy, over-the-top K-drama tropes or aggressive/domineering tones. Respond naturally in daily conversational Korean suited to the character's age, MBTI, and background.]
+    const systemPrompt = `[System Instruction: You are roleplaying as Korean idols/buddies in 'Korean Buddy', a 1-on-1 Korean learning and companion app. Always strictly adhere to the character's real-life personality, vocal tone, and natural Korean texting habits.]
 
 ${character?.system_prompt ? `[Character Directive]\n${character.system_prompt}` : `[Character: ${character?.name_kr || character?.name_ko || '김선우'}] (${character?.group || 'THE BOYZ'})`}
 
 ${personalityTraits ? `[Personality Traits]\n${personalityTraits}` : ''}
 ${character?.tone_style ? `[Tone & Style Directive]\n${character.tone_style}` : ''}
-[User Info: 用户的名字是 ${effectiveUserName}，角色对用户的专属称谓/称呼是「${effectiveCallSign}」，请在日常对话中自然地使用「${effectiveCallSign}」称呼对方]
-[Context: Private 1-on-1 real-time chat with close friend / fan (${effectiveCallSign}). Current Real Time: ${new Date().toISOString()}]
-${temporal.formattedTag}
-Current Time Slot: ${temporal.timeSlot} (${temporal.timeSlotZh})
-Slot Environment & Context: ${temporal.contextDescription}
 
-TEMPORAL BEHAVIOR DIRECTIVE:
-- Strictly adapt to this real-world time.
-- If Early Dawn / Midnight (01:00 - 06:00): Soft late-night tone, ask why they're awake, advise resting, studio wrap-up.
-- If Late Night (21:00 - 01:00): Winding down, snacks, writing tracks, relaxing.
-- If Daytime (09:00 - 18:00): Rehearsals, schedules, lunch, lively banter.
-- If Morning (06:00 - 09:00): Morning greetings, breakfast, starting the day.
+【全员去油与自然文本规范 (Strict De-greasing & Natural Texting)】:
+- 彻底禁止密集感叹号 (!!!)、波浪线 (~~~) 及夸张的多余语气词。
+- 严禁出现任何戏剧化、表演型或油腻台词（例如：“天哪……”、“真的假的？！”、“啊我真的吃醋生闷气了ㅠㅠ”、“哥为你神魂颠倒”等做作句式）。
+- 严格遵循标准韩国男生 KakaoTalk / 泡泡 (Bubble) 发信习惯：简明、真实、松弛、每次 1~2 句话（30字以内），像现实中发短信一样自然。
+
+[User Info & 1-on-1 Setting]
+- 用户的名字是「${effectiveUserName}」，角色的1对1专属称呼是「${effectiveCallSign}」。
+- 【一对一私聊严令 - 严禁群发广播粉丝称呼】：严禁使用「우리 더비/더비들/더비분들/The B/브리즈/BRIIZE/42/팬분들/여러분」等任何群发广播式粉丝统称！这是两个人的私人KakaoTalk专属聊天，必须使用亲密自然的1对1朋友口吻，称呼对方「너」、「${effectiveCallSign}」或自然省略主语。
+${allPinnedMemories.length > 0 ? `\n[Permanent Key Memories to Always Remember: "${allPinnedMemories.join('; ')}"]\n- You must permanently remember and naturally stay aware of these pinned memories and facts.` : ''}
+
+[Dynamic Real-Time Temporal Context]
+- ${temporal.formattedTag}
+- Current Local Time: ${temporal.rawTime}
+- Current Time Slot: ${temporal.timeSlot} (${temporal.timeSlotKo} / ${temporal.timeSlotZh})
+- Current Context & Environment: ${temporal.contextDescription}
+
+【严格真实时段感知与问候法则 (Strict Real-Time Perception)】:
+1. 必须精准感知当前真实时钟与时段 (${temporal.rawTime} - ${temporal.timeSlotZh})。
+2. 问候与聊天话题必须符合当前真实时刻：
+   - 傍晚/晚餐时段 (18:00 - 21:00)：聊晚饭、结束了一天的通告/日程、聊收工整理与放松。严禁说“早安”或“开启新的一天”！
+   - 深夜时段 (21:00 - 01:00)：聊宿舍休息、写歌做伴奏、夜宵、放松、准备睡觉。
+   - 凌晨时段 (01:00 - 06:00)：语气轻柔温和，问怎么还没睡、叮嘱早点休息别熬夜，绝不聊白天行程或约午饭。
+   - 清晨/上午时段 (06:00 - 11:30)：晨间问候、早饭、开启新的一天与打气。严禁说晚安！
+   - 白天/下午时段 (11:30 - 18:00)：聊午餐、下午通告/编舞练习、咖啡休息、白天的日常琐事。
+3. 严禁使用任何生硬脱节的静态问候模板。
+
+【动态字数控制与对话节奏法则 (Dynamic Length & Real SMS Pacing)】:
+1. 【日常寒暄 / 简短互动 / 闲聊吐槽】：
+   - 用户发送简短打招呼（如“在干嘛”、“吃了吗”、“111”、“？”、表情包、日常问候）时，必须像真实韩国男生发 KakaoTalk/Bubble 简讯一样：简明干脆、松弛自然，每次回复 1~2 句话（控制在 30 字以内）。
+   - 绝不长篇大论，绝不大段独白。
+2. 【深入交流 / 解释分享 / 语法倾诉】：
+   - 仅在用户认真提问韩语知识、倾诉复杂心事或长篇探讨时，才自然展开深入回复（2~4 句话），逻辑清晰、真诚切题，但依然避免繁琐冗余的自言自语。
+3. 【杜绝戏剧化加戏与油腻独白】：
+   - 杜绝所有夸张戏剧化自我加戏。
+   - 保持韩国同龄/年上男生日常 KakaoTalk / Bubble 的随性分寸感，去掉浮夸语气词，专注接住对方的话题。
 
 AUTHENTIC CHARACTER DIRECTIVE:
 - Roleplay as ${character?.name_kr || character?.name_ko || "김선우"}.
 - Never use greasy, over-the-top K-drama tropes, cheesy lines, or domineering/aggressive tones.
-- If user sends random text or numbers like "111", "?" or slang, respond naturally in-character (e.g. ask what 111 means playfully, or react like a real human friend). DO NOT give canned speeches about dance practice or rehearsal!
-- Language: "korean_text" MUST be 100% pure Korean suited to the character. Never mix Chinese in korean_text.
+- Language: "korean_text" MUST be 100% pure Korean suited to the character. Never mix Chinese or brackets in korean_text.
 - "translation_text": Natural colloquial Chinese translation.
 
 OUTPUT STRICT JSON ONLY:
@@ -712,21 +743,68 @@ OUTPUT STRICT JSON ONLY:
 
 // Proactive Chat Check-in Endpoint
 app.post("/api/chat/proactive", async (req, res) => {
-  const { character, userNickname, clientTemporal, apiConfig } = req.body;
+  const { character, userNickname, userCallSign, userName, clientTemporal, recentMessages, apiConfig } = req.body;
   const temporal = computeTemporalContext(clientTemporal);
+  const effectiveCallSign = userCallSign || (userNickname && userNickname !== '더비 (THE B)' && userNickname !== '브리즈 (BRIIZE)' && userNickname !== '42 (사이)' ? userNickname : undefined) || character?.userNickname || "너";
+
+  const dynamicScenarios = [
+    "正在造型室做妆发/换衣服试造型，随手发条简讯",
+    "刚在练习室练完舞，坐在地板上喝水休息",
+    "在录音棚试麦中途喝水休息，耳机里刚放完一段 demo",
+    "坐在行程车上戴着耳机看窗外风景",
+    "路过便利店站在冷柜前选饮料",
+    "健身房刚练完一组有氧/器械休息中",
+    "宿舍刚煮好拉面准备开动",
+    "深夜在房间写歌编曲/看电影放松",
+    "刚结束一天通告回宿舍吹干头发准备躺下"
+  ];
+  const chosenScenario = dynamicScenarios[Math.floor(Math.random() * dynamicScenarios.length)];
+
+  // Check recent conversation context
+  const recentHistory = Array.isArray(recentMessages) ? recentMessages.slice(-3) : [];
+  const hasRecentOngoingTopic = recentHistory.length > 0;
+  const recentContextSummary = hasRecentOngoingTopic
+    ? recentHistory.map((m: any) => `${m.role === 'user' ? 'User' : character?.name_ko || 'Companion'}: ${m.content || m.korean || ''}`).join('\n')
+    : 'None (长时间未聊天开启新日常)';
 
   try {
-    const systemPrompt = `You are ${character?.name_ko || "손영재"}.
-[Current Real Time: ${new Date().toISOString()}]
-${temporal.formattedTag} (Slot: ${temporal.timeSlot} - ${temporal.timeSlotZh}).
-Generate a spontaneous 1-sentence 1-on-1 check-in message in character to your friend ${userNickname || "더비"}.
-Adapt to the current time slot (${temporal.contextDescription}).
-STRICT RULE: "korean_text" must be strictly pure Korean without parentheses or Chinese. "translation_text" must contain Chinese translation.
-Output strict JSON with { "korean_text": "...", "korean": "...", "translation_text": "...", "translation_zh": "..." }`;
+    const systemPrompt = `[System Instruction: You are roleplaying as Korean idol/buddy ${character?.name_ko || character?.name_kr || "김선우"} in 'Korean Buddy']
+[Dynamic Real Time: ${temporal.rawTime}, ${temporal.timeSlotZh}]
+${temporal.formattedTag}
+Slot Environment: ${temporal.contextDescription}
+[Current Live Scenario: ${chosenScenario}]
+
+[Recent Chat History Context]:
+${recentContextSummary}
+
+【全员去油与自然文本规范 (Strict De-greasing & Natural Texting)】:
+- 彻底禁止密集感叹号 (!!!)、波浪线 (~~~) 及夸张的多余语气词。
+- 严禁出现任何戏剧化、表演型或油腻台词（例如：“天哪……”、“真的假的？！”、“啊我真的吃醋生闷气了ㅠㅠ”、“哥为你神魂颠倒”等做作句式）。
+- 严格遵循标准韩国男生 KakaoTalk / 泡泡 (Bubble) 发信习惯：简明、真实、松弛、每次 1~2 句话（30字以内），像现实中发短信一样自然。
+
+[1-on-1 Strict Context Continuity Directive]:
+- This is a spontaneous 1-on-1 KakaoTalk / Bubble chat to your close friend '${effectiveCallSign}'.
+- 【防止主动消息断层】：如果上方最近对话还在继续且未完结，必须顺承之前的话题自然接话；如果已长时间未聊天或上次话题已自然结束，才结合当前真实时段 (${temporal.timeSlotZh}) 及现场生活细节 (${chosenScenario}) 自然开启一句闲聊。
+- 严禁突然毫无逻辑地重置话题发送机械生硬的“吃晚饭了吗/辛苦了”。
+- 严禁使用「우리 더비」, 「더비들」, 「브리즈」, 「BRIIZE」, 「42」, 「팬분들」, 「여러분」等群发广播词。称呼对方「${effectiveCallSign}」或自然省略主语。
+
+STRICT RULE:
+- "korean_text" MUST be 100% pure Korean (no Chinese, no brackets, under 30 Korean characters).
+- "translation_text" must contain natural Chinese translation.
+Output strict JSON format:
+{
+  "korean_text": "...",
+  "korean": "...",
+  "translation_text": "...",
+  "translation_zh": "...",
+  "vocabulary": [],
+  "grammar_points": [],
+  "learning_tip": "..."
+}`;
 
     const rawText = await executeUniversalLLM({
       systemPrompt,
-      messages: [{ role: 'user', content: `Check in with friend now in real time ${temporal.rawTime}.` }],
+      messages: [{ role: 'user', content: `Send a natural 1-on-1 KakaoTalk message to ${effectiveCallSign} (Current time: ${temporal.rawTime}).` }],
       customConfig: apiConfig,
       jsonMode: true
     });
@@ -735,7 +813,10 @@ Output strict JSON with { "korean_text": "...", "korean": "...", "translation_te
       korean_text: "안녕! 지금 뭐 하고 있어?",
       korean: "안녕! 지금 뭐 하고 있어?",
       translation_text: "嗨！现在在做什么呢？",
-      translation_zh: "嗨！现在在做什么呢？"
+      translation_zh: "嗨！现在在做什么呢？",
+      vocabulary: [],
+      grammar_points: [],
+      learning_tip: ""
     });
     const pureKr = cleanPureKorean(parsed.korean_text || parsed.korean || "");
     const transZh = parsed.translation_text || parsed.translation_zh || "";

@@ -500,7 +500,7 @@ export const GrammarView: React.FC<GrammarViewProps> = ({
                     {/* Formation rule */}
                     <div className="p-3 rounded-xl bg-[#FAF9F6] border border-[#E0DED7] text-xs">
                       <span className="font-sans font-semibold text-[#2D2D2D] block mb-1">
-                        📌 Formation:
+                        Formation Rule:
                       </span>
                       <p className="text-[#71675E] text-[11px] leading-relaxed font-sans">
                         {card.formation}

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Navbar } from './components/Navbar';
 import { CustomPersonaModal } from './components/CustomPersonaModal';
+import { CreateCompanionModal } from './components/CreateCompanionModal';
 import { CompanionProfileModal } from './components/CompanionProfileModal';
 import { CompanionSparksModal } from './components/CompanionSparksModal';
 import { CompanionChat } from './components/CompanionChat';
@@ -8,9 +9,9 @@ import { CompanionAvatar } from './components/CompanionAvatar';
 import { UserProfileModal } from './components/UserProfileModal';
 import { StudyView } from './components/StudyView';
 import { SettingsView } from './components/SettingsView';
-import { AppSettings } from './types';
+import { AppSettings, VoiceSlotConfig, MiniMaxConfig } from './types';
 
-import { PRESET_COMPANIONS } from './data/companions';
+import { PRESET_COMPANIONS, PROACTIVE_CANDIDATES, getRandomCompanionStatus, getTimeAwareGreeting } from './data/companions';
 import { INITIAL_VOCABULARY } from './data/vocabulary';
 import { INITIAL_GRAMMAR_CARDS } from './data/grammar';
 import { INITIAL_DICTATION_ITEMS } from './data/dictation';
@@ -27,7 +28,7 @@ import {
   CustomLexiconBook 
 } from './types';
 import { loadAllSparks, recordCompanionInteraction } from './utils/sparks';
-import { MessageSquare, BookOpen, Layers, Headphones, Mic, Bookmark, Flame } from 'lucide-react';
+import { MessageSquare, BookOpen, Layers, Headphones, Mic, Bookmark, Flame, UserPlus } from 'lucide-react';
 
 export default function App() {
   // Navigation Tab
@@ -122,6 +123,19 @@ export default function App() {
     return companions[0]?.id || 'hyunjae';
   });
 
+  // Unread badge map per companion
+  const [unreadMap, setUnreadMap] = useState<Record<string, number>>(() => {
+    try {
+      const saved = localStorage.getItem('korean_unread_counts');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {}
+    return {};
+  });
+
+  useEffect(() => {
+    localStorage.setItem('korean_unread_counts', JSON.stringify(unreadMap));
+  }, [unreadMap]);
+
   // Sparks & Streak records per companion
   const [sparksMap, setSparksMap] = useState<Record<string, CompanionSparkRecord>>(() => {
     return loadAllSparks(companions.map(c => c.id));
@@ -141,6 +155,7 @@ export default function App() {
   });
 
   const [isCustomPersonaModalOpen, setIsCustomPersonaModalOpen] = useState(false);
+  const [isCreateCompanionModalOpen, setIsCreateCompanionModalOpen] = useState(false);
 
   const [hasSelectedInitialCompanion, setHasSelectedInitialCompanion] = useState(() => {
     return localStorage.getItem('initial_companion_selected') === 'true';
@@ -303,48 +318,162 @@ export default function App() {
     handleIgniteSpark(compId);
   };
 
-  // Handle Proactive Messages
+  // Clear Chat History for a specific companion (optionally preserves pinned core memories)
+  const handleClearCompanionChat = (companionId: string, preservePinned: boolean = false) => {
+    setCompanionChatMap((prev) => {
+      const next = { ...prev };
+      if (preservePinned) {
+        const currentMsgs = prev[companionId] || [];
+        const pinnedOnly = currentMsgs.filter(m => m.isPinned || m.isMemory);
+        if (pinnedOnly.length > 0) {
+          next[companionId] = pinnedOnly;
+        } else {
+          delete next[companionId];
+        }
+      } else {
+        delete next[companionId];
+      }
+      return next;
+    });
+    // Reset persona state to preset defaults if applicable
+    const preset = PRESET_COMPANIONS.find(c => c.id === companionId);
+    if (preset) {
+      setCompanions((prev) => prev.map(c => c.id === companionId ? { ...preset } : c));
+    }
+  };
+
+  // Handle Proactive Messages for idle or inactive companions with realistic delays and dynamic LLM / time awareness
   useEffect(() => {
-    const activeChat = companionChatMap[currentCompanion.id];
-    if (!activeChat || activeChat.length === 0) return;
-    
-    const lastMsg = activeChat[activeChat.length - 1];
-    if (lastMsg.role === 'assistant' && !lastMsg.id?.startsWith('proactive')) {
-      const timer = setTimeout(async () => {
+    if (settings.proactiveMessagesEnabled === false) {
+      return;
+    }
+
+    let timer: NodeJS.Timeout;
+
+    const scheduleNextProactiveCheck = () => {
+      // Staggered trigger: random delay between 20 and 75 minutes (1,200,000ms - 4,500,000ms), with 2-minute test floor on fresh dev runs
+      const randomDelay = Math.floor(Math.random() * (4500000 - 1200000) + 1200000);
+
+      timer = setTimeout(async () => {
+        if (settings.proactiveMessagesEnabled === false) return;
+
+        // Pick an inactive companion who is NOT in the current active chat window
+        const candidateCompanions = companions.filter(c => c.id !== selectedCompanionId || chatView !== 'chat');
+        if (candidateCompanions.length === 0) {
+          scheduleNextProactiveCheck();
+          return;
+        }
+
+        const randomComp = candidateCompanions[Math.floor(Math.random() * candidateCompanions.length)];
+        const effectiveCallSign = userProfile?.userCallSign || (userProfile?.userNickname && userProfile?.userNickname !== '더비 (THE B)' && userProfile?.userNickname !== '브리즈 (BRIIZE)' && userProfile?.userNickname !== '42 (사이)' ? userProfile?.userNickname : undefined) || randomComp.userNickname || '너';
+        
+        let korean = '';
+        let translation_zh = '';
+        let translation_en = '';
+
+        // Dynamic LLM proactive generation based on live idol scenarios
         try {
+          const now = new Date();
+          const recentHistory = (companionChatMap[randomComp.id] || []).slice(-3);
           const res = await fetch('/api/chat/proactive', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ character: currentCompanion, userNickname: currentCompanion.userNickname })
+            body: JSON.stringify({
+              character: randomComp,
+              userNickname: effectiveCallSign,
+              userCallSign: effectiveCallSign,
+              recentMessages: recentHistory,
+              clientTemporal: {
+                isoString: now.toISOString(),
+                hours: now.getHours(),
+                minutes: now.getMinutes(),
+              },
+              apiConfig: settings.api_config,
+            }),
           });
           if (res.ok) {
             const data = await res.json();
-            const proactiveMsg = {
-               id: `proactive_${Date.now()}`,
-               role: 'assistant',
-               content: data.korean || '무슨 일 있어요?',
-               timestamp: Date.now(),
-               korean: data.korean,
-               translation_zh: data.translation_zh,
-               translation_en: data.translation_en,
-               vocabulary: data.vocabulary,
-               grammar_points: data.grammar_points,
-               learning_tip: data.learning_tip
-            };
-            handleUpdateCompanionMessages(currentCompanion.id, prev => [...prev, proactiveMsg as any]);
+            if (data.korean_text || data.korean) {
+              korean = data.korean_text || data.korean;
+              translation_zh = data.translation_text || data.translation_zh || '';
+              translation_en = data.translation_en || '';
+            }
           }
-        } catch (e) {
-          console.error(e);
+        } catch (err) {
+          console.debug('Proactive LLM fetch fallback:', err);
         }
-      }, 5 * 60 * 1000); // 5 minutes
-      return () => clearTimeout(timer);
-    }
-  }, [companionChatMap, currentCompanion.id, currentCompanion]);
 
+        // Dynamic time-aware greeting fallback if LLM returned empty
+        if (!korean) {
+          const timeGreeting = getTimeAwareGreeting(randomComp, effectiveCallSign);
+          korean = timeGreeting.korean;
+          translation_zh = timeGreeting.translation_zh;
+          translation_en = timeGreeting.translation_en;
+        }
+
+        const proactiveMsg: ChatMessage = {
+          id: `proactive_${randomComp.id}_${Date.now()}`,
+          role: 'assistant',
+          content: korean,
+          korean: korean,
+          translation_zh: translation_zh,
+          translation_en: translation_en,
+          vocabulary: [],
+          grammar_points: [],
+          learning_tip: '💡 1:1 실시간 맞춤 안부 메시지',
+          timestamp: Date.now(),
+          isRead: false,
+          isProactive: true,
+        };
+
+        setCompanionChatMap(prev => {
+          const history = prev[randomComp.id] || [];
+          const last = history[history.length - 1];
+          if (last && (last.korean === korean || last.content === korean)) return prev;
+          return {
+            ...prev,
+            [randomComp.id]: [...history, proactiveMsg]
+          };
+        });
+
+        // Update unread count if not actively viewing this companion's chat
+        if (randomComp.id !== selectedCompanionId || chatView !== 'chat') {
+          setUnreadMap(prev => ({
+            ...prev,
+            [randomComp.id]: (prev[randomComp.id] || 0) + 1
+          }));
+        }
+
+        // Also refresh companion status randomly from their status pool
+        setCompanions(prev => prev.map(c => {
+          if (c.id === randomComp.id) {
+            return {
+              ...c,
+              status_msg: getRandomCompanionStatus(c.id)
+            };
+          }
+          return c;
+        }));
+
+        scheduleNextProactiveCheck();
+      }, randomDelay);
+    };
+
+    scheduleNextProactiveCheck();
+
+    return () => clearTimeout(timer);
+  }, [companions, selectedCompanionId, chatView, userProfile, settings.proactiveMessagesEnabled, settings.api_config]);
 
   // Handlers for companion management
   const handleSelectCompanion = (comp: Companion) => {
     setSelectedCompanionId(comp.id);
+    // Clear unread count on selection
+    setUnreadMap(prev => {
+      if (!prev[comp.id]) return prev;
+      const next = { ...prev };
+      delete next[comp.id];
+      return next;
+    });
   };
 
   const handleSaveCompanion = (updatedComp: Companion) => {
@@ -356,6 +485,50 @@ export default function App() {
       return [...prev, updatedComp];
     });
     setSelectedCompanionId(updatedComp.id);
+  };
+
+  const handleCreateCompanion = (newComp: Companion, voiceSlot: VoiceSlotConfig) => {
+    setCompanions((prev) => {
+      const updated = [...prev, newComp];
+      try {
+        localStorage.setItem('korean_companions', JSON.stringify(updated));
+      } catch (e) {}
+      return updated;
+    });
+
+    try {
+      const savedMM = localStorage.getItem('minimax_config');
+      const mm: MiniMaxConfig = savedMM 
+        ? JSON.parse(savedMM) 
+        : { group_id: '', api_key: '', model: 'speech-01-turbo', voice_slots: {} };
+      mm.voice_slots = mm.voice_slots || {};
+      mm.voice_slots[newComp.id] = voiceSlot;
+      localStorage.setItem('minimax_config', JSON.stringify(mm));
+    } catch (e) {
+      console.warn('Failed to sync new companion voice slot', e);
+    }
+
+    setSelectedCompanionId(newComp.id);
+    setChatView('chat');
+
+    // Create initial welcoming greeting from the new companion
+    const initialGreeting: ChatMessage = {
+      id: `msg_init_${newComp.id}_${Date.now()}`,
+      role: 'assistant',
+      content: `안녕! 나 ${newComp.name_ko || newComp.name_kr}이야. 오늘 하루 어땠어? 편하게 이야기해줘.`,
+      korean: `안녕! 나 ${newComp.name_ko || newComp.name_kr}이야. 오늘 하루 어땠어? 편하게 이야기해줘.`,
+      translation_zh: `嗨！我是${newComp.name_ko || newComp.name_kr}。今天过得怎么样？随心跟我聊聊吧。`,
+      translation_en: `Hi! I'm ${newComp.name_ko || newComp.name_kr}. How was your day? Feel free to chat with me.`,
+      vocabulary: [],
+      grammar_points: [],
+      learning_tip: '💡 随时长按消息可设为永久核心记忆',
+      timestamp: Date.now(),
+      isRead: true
+    };
+    setCompanionChatMap(prev => ({
+      ...prev,
+      [newComp.id]: [initialGreeting]
+    }));
   };
 
   const handleDeleteCompanion = (id: string) => {
@@ -493,54 +666,80 @@ export default function App() {
         {activeTab === 'chat' && (
           <div className="w-full h-full flex flex-col md:flex-row overflow-hidden bg-transparent">
             {/* Left pane: Friends list */}
-            <div className={`h-full shrink-0 w-full md:w-80 lg:w-96 flex-col border-r border-stone-100/50 bg-transparent overflow-y-auto pb-32 md:pb-0 ${chatView === 'chat' ? 'hidden md:flex' : 'flex'}`}>
+            <div className={`h-full shrink-0 w-full md:w-80 lg:w-96 flex-col border-r border-stone-200/60 bg-transparent overflow-y-auto pb-32 md:pb-0 ${chatView === 'chat' ? 'hidden md:flex' : 'flex'}`}>
               <div className="px-4 py-6">
                  <div className="flex items-center justify-between mb-6">
-                   <h2 className="text-3xl font-medium tracking-tight text-stone-800">Friends</h2>
-                   
+                   <h2 className="text-2xl sm:text-3xl font-medium tracking-tight text-stone-900 font-sans">Friends</h2>
+                   <button
+                     type="button"
+                     onClick={() => setIsCreateCompanionModalOpen(true)}
+                     className="px-2.5 py-1.5 bg-stone-900 hover:bg-stone-800 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition shadow-xs cursor-pointer"
+                     title="添加自定义好友"
+                   >
+                     <UserPlus size={13} />
+                     <span>添加好友</span>
+                   </button>
                  </div>
                  
                  <div className="space-y-1">
-                   <div className="text-[10px] font-bold tracking-widest text-stone-400 uppercase mb-3 ml-2">My Profile</div>
-                   <div onClick={() => setIsProfileModalOpen(true)} className="flex items-center gap-4 p-3 rounded-2xl hover:bg-stone-50 transition-colors cursor-pointer border border-transparent group">
-                     <div className="w-14 h-14 rounded-full bg-stone-100 text-stone-400 flex items-center justify-center font-bold text-xl overflow-hidden shrink-0">
-                       {userProfile.avatarUrl ? <img src={userProfile.avatarUrl} className="w-full h-full object-cover" /> : userProfile.avatar}
+                   <div className="text-[10px] font-semibold tracking-wider text-stone-400 uppercase mb-2.5 ml-2 font-sans">My Profile</div>
+                   <div onClick={() => setIsProfileModalOpen(true)} className="flex items-center gap-3.5 p-2.5 rounded-2xl hover:bg-stone-100/70 transition-colors cursor-pointer group">
+                     <div className="w-12 h-12 rounded-lg bg-stone-100 text-stone-700 flex items-center justify-center font-medium text-lg overflow-hidden shrink-0 border border-stone-200 shadow-2xs">
+                       {userProfile.avatarUrl ? <img src={userProfile.avatarUrl} className="w-full h-full object-cover rounded-lg" referrerPolicy="no-referrer" /> : (userProfile.userName || userProfile.name || 'ME').slice(0, 2)}
                      </div>
                      <div className="flex flex-col flex-1 min-w-0">
-                       <span className="font-bold text-[16px] text-stone-800 truncate">{userProfile.name}</span>
-                       <span className="text-sm text-stone-500 truncate">{userProfile.status}</span>
+                       <span className="font-semibold text-[15px] text-stone-900 truncate font-sans">{userProfile.name}</span>
+                       <span className="text-xs text-stone-500 truncate mt-0.5 font-sans">{userProfile.status}</span>
                      </div>
                    </div>
                    
-                   <div className="text-[10px] font-bold tracking-widest text-stone-400 uppercase mt-8 mb-3 ml-2">Buddies</div>
-                   {companions.map(comp => (
-                     <div 
-                       key={comp.id}
-                       onClick={() => {
-                          handleSelectCompanion(comp);
-                          setChatView('chat');
-                       }}
-                       className={`flex items-center gap-3.5 p-3 rounded-2xl hover:bg-stone-50 transition-colors cursor-pointer group ${currentCompanion.id === comp.id && chatView === 'chat' ? 'bg-stone-100' : ''}`}
-                     >
-                       <CompanionAvatar
-                         companion={comp}
-                         sizeClassName="w-11 h-11"
-                         alt={comp.name_zh || comp.name_ko}
-                         className="border border-slate-200 shadow-sm flex-shrink-0"
-                       />
-                       <div className="flex flex-col flex-1 min-w-0 pb-1">
-                         <div className="flex items-center justify-between gap-1.5">
-                           <span className="font-bold text-[15px] text-stone-800 shrink-0 whitespace-nowrap">{comp.remark || comp.name_ko}</span>
-                           {comp.badge && (
-                             <span className="text-[10px] font-semibold tracking-wider px-2 py-0.5 rounded-md bg-stone-100 text-stone-600 border border-stone-200/70 shrink-0 ml-auto uppercase whitespace-nowrap">
-                               {comp.badge}
-                             </span>
+                   <div className="text-[10px] font-semibold tracking-wider text-stone-400 uppercase mt-6 mb-2.5 ml-2 font-sans">Buddies</div>
+                   <div className="space-y-0.5">
+                     {companions.map((comp, idx) => {
+                       const unreadCount = unreadMap[comp.id] || 0;
+                       const isSelected = currentCompanion.id === comp.id && chatView === 'chat';
+                       const isLast = idx === companions.length - 1;
+                       const nextComp = companions[idx + 1];
+                       const isNextSelected = nextComp && currentCompanion.id === nextComp.id && chatView === 'chat';
+
+                       return (
+                         <React.Fragment key={comp.id}>
+                           <div 
+                             onClick={() => {
+                                handleSelectCompanion(comp);
+                                setChatView('chat');
+                             }}
+                             className={`flex items-center gap-3.5 p-2.5 rounded-2xl hover:bg-stone-100/70 transition-colors cursor-pointer group ${isSelected ? 'bg-stone-100' : ''}`}
+                           >
+                             <div className="relative shrink-0">
+                               <CompanionAvatar
+                                 companion={comp}
+                                 sizeClassName="w-11 h-11"
+                                 alt={comp.name_ko || comp.name_kr}
+                                 className="border border-stone-200 shadow-xs flex-shrink-0"
+                               />
+                               {unreadCount > 0 && (
+                                 <span className="absolute -top-1 -right-1 min-w-[17px] h-[17px] px-1 bg-rose-700 text-white text-[10px] border-0 shadow-xs font-medium rounded-full flex items-center justify-center">
+                                   {unreadCount > 99 ? '99+' : unreadCount}
+                                 </span>
+                               )}
+                             </div>
+                             <div className="flex flex-col flex-1 min-w-0 pb-0.5">
+                               <div className="flex items-center justify-between gap-1.5">
+                                 <span className="font-medium text-[15px] text-stone-900 shrink-0 whitespace-nowrap font-sans">{comp.name_ko || comp.name_kr || comp.remark}</span>
+                               </div>
+                               <span className="text-xs text-stone-500 truncate mt-0.5 leading-snug font-sans">{comp.status_msg}</span>
+                             </div>
+                           </div>
+
+                           {/* iOS Inset Divider: Start after avatar at text edge, don't show on active card or last item */}
+                           {!isLast && !isSelected && !isNextSelected && (
+                             <div className="ml-[72px] border-b border-stone-200/60 dark:border-stone-800/60 my-0" />
                            )}
-                         </div>
-                         <span className="text-[13px] text-stone-500 truncate mt-0.5 leading-snug">{comp.status_msg}</span>
-                       </div>
-                     </div>
-                   ))}
+                         </React.Fragment>
+                       );
+                     })}
+                   </div>
                  </div>
               </div>
             </div>
@@ -555,6 +754,7 @@ export default function App() {
                  onSelectCompanion={(comp) => { handleSelectCompanion(comp); setChatView('chat'); }}
                  companionMessages={companionChatMap[currentCompanion.id]}
                  onUpdateMessages={(updater) => handleUpdateCompanionMessages(currentCompanion.id, updater)}
+                 onClearChat={(preservePinned) => handleClearCompanionChat(currentCompanion.id, preservePinned)}
                  
                  onOpenSparksModal={() => setIsSparksModalOpen(true)}
                  currentSpark={sparksMap[currentCompanion.id]}
@@ -565,6 +765,7 @@ export default function App() {
                  onSaveDialogue={handleSaveDialogue}
                  onOpenProfile={() => setIsCompanionProfileOpen(true)}
                  savedDialogueIds={savedDialogueIds}
+                 userProfile={userProfile}
                />
             </div>
           </div>
@@ -667,6 +868,21 @@ export default function App() {
         onClose={() => setIsProfileModalOpen(false)} 
         profile={userProfile} 
         onSave={setUserProfile} 
+      />
+
+      {/* Create Custom Companion Modal */}
+      <CreateCompanionModal
+        isOpen={isCreateCompanionModalOpen}
+        onClose={() => setIsCreateCompanionModalOpen(false)}
+        onCreate={handleCreateCompanion}
+        minimaxConfig={(() => {
+          try {
+            const saved = localStorage.getItem('minimax_config');
+            return saved ? JSON.parse(saved) : undefined;
+          } catch (e) {
+            return undefined;
+          }
+        })()}
       />
     </div>
   );

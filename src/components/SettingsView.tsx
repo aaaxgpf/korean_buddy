@@ -27,6 +27,7 @@ import { PRESET_COMPANIONS } from '../data/companions';
 import { speakKorean, stopSpeaking } from '../utils/audio';
 import { directTestGeminiConnection } from '../utils/geminiDirect';
 import { UserProfileModal } from './UserProfileModal';
+import { CompanionAvatar } from './CompanionAvatar';
 
 interface Props {
   settings: AppSettings;
@@ -283,22 +284,24 @@ export const SettingsView: React.FC<Props> = ({
   };
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-8 pb-36 space-y-8 animate-in fade-in duration-300 h-full overflow-y-auto">
+    <div className="w-full max-w-2xl mx-auto px-3.5 sm:px-6 py-6 pb-36 space-y-6 animate-in fade-in duration-300 h-full overflow-y-auto overflow-x-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-stone-200 pb-4">
+      <div className="flex items-center justify-between border-b border-stone-200/80 pb-4">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-stone-900 text-white flex items-center justify-center shadow-xs">
-            <Settings size={22} />
+          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-stone-900 text-white flex items-center justify-center shadow-xs">
+            <Settings size={20} />
           </div>
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-stone-900">Settings & API Hub</h1>
-            <p className="text-xs text-stone-500">大模型 API 配置中心、MiniMax 声音克隆与偏好设置</p>
+            <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-stone-900 font-sans">
+              设置与接口 (Settings & API)
+            </h1>
+            <p className="text-xs text-stone-500">API 接口配置、MiniMax 声音克隆与偏好设置</p>
           </div>
         </div>
         {savedSuccess && (
-          <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-full border border-emerald-200 animate-pulse">
-            <CheckCircle2 size={14} />
-            <span>配置已自动保存</span>
+          <div className="flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
+            <CheckCircle2 size={13} />
+            <span>已保存</span>
           </div>
         )}
       </div>
@@ -306,27 +309,26 @@ export const SettingsView: React.FC<Props> = ({
       {/* User Profile Card */}
       <div 
         onClick={() => setIsProfileModalOpen(true)}
-        className="bg-white p-5 rounded-2xl shadow-xs border border-stone-200 flex items-center justify-between gap-4 hover:border-amber-400 hover:shadow-sm transition-all cursor-pointer group"
+        className="bg-white p-4 sm:p-5 rounded-2xl shadow-xs border border-stone-200/80 flex items-center justify-between gap-3 hover:border-stone-400 transition-all cursor-pointer group"
       >
-        <div className="flex items-center gap-4">
-          <div className="w-14 h-14 rounded-2xl bg-stone-900 text-[#FFEB3B] flex items-center justify-center font-bold text-2xl shadow-xs overflow-hidden shrink-0 border border-stone-800 group-hover:scale-105 transition-transform">
+        <div className="flex items-center gap-3.5 min-w-0">
+          <div className="w-12 h-12 rounded-lg bg-stone-100 text-stone-700 flex items-center justify-center font-medium text-lg shadow-xs overflow-hidden shrink-0 border border-stone-200">
             {userProfile.avatarUrl ? (
-              <img src={userProfile.avatarUrl} alt="avatar" referrerPolicy="no-referrer" className="w-full h-full object-cover" />
+              <img src={userProfile.avatarUrl} alt="avatar" referrerPolicy="no-referrer" className="w-full h-full object-cover rounded-lg" />
             ) : (
-              <span>{userProfile.avatar}</span>
+              <span>{(userProfile.userName || userProfile.name || 'ME').slice(0, 2)}</span>
             )}
           </div>
-          <div>
-            <div className="font-bold text-base text-stone-900 flex items-center gap-2">
-              <span>{userProfile.userName || userProfile.name}</span>
-              <span className="text-[11px] px-2 py-0.5 bg-stone-100 text-stone-600 rounded-md font-medium">Korean Learner</span>
+          <div className="min-w-0 flex-1">
+            <div className="font-semibold text-sm sm:text-base text-stone-900 flex items-center gap-1.5 flex-wrap">
+              <span className="truncate">{userProfile.userName || userProfile.name}</span>
               {userProfile.userCallSign && (
-                <span className="text-[11px] px-2 py-0.5 bg-amber-50 text-amber-900 border border-amber-200 rounded-md font-semibold">
-                  称呼: {userProfile.userCallSign}
+                <span className="text-[11px] px-2 py-0.5 bg-stone-100 text-stone-700 rounded-md font-normal shrink-0">
+                  专属称呼: {userProfile.userCallSign}
                 </span>
               )}
             </div>
-            <div className="text-xs text-stone-500 mt-0.5">{userProfile.status}</div>
+            <div className="text-xs text-stone-500 truncate mt-0.5">{userProfile.status}</div>
           </div>
         </div>
 
@@ -336,10 +338,10 @@ export const SettingsView: React.FC<Props> = ({
             e.stopPropagation();
             setIsProfileModalOpen(true);
           }}
-          className="px-3.5 py-2 bg-stone-100 group-hover:bg-amber-500 group-hover:text-white text-stone-700 text-xs font-bold rounded-xl transition-colors flex items-center gap-1.5 shrink-0"
+          className="px-3.5 py-1.5 bg-stone-100 group-hover:bg-stone-900 group-hover:text-white text-stone-700 text-xs font-medium rounded-xl transition-colors flex items-center gap-1 shrink-0 cursor-pointer"
         >
-          <User size={14} />
-          <span>프로필 설정 (Edit)</span>
+          <User size={13} />
+          <span>编辑资料</span>
         </button>
       </div>
 
@@ -749,32 +751,30 @@ export const SettingsView: React.FC<Props> = ({
         {/* Idol Voice Slots Manager */}
         <div className="space-y-4 pt-2">
           <div className="text-xs font-bold text-stone-700 uppercase tracking-wider">
-            7 Idol Voice Slot Mapping (爱豆音色通道配置)
+            爱豆与自定义好友音色通道配置 (Voice Slot Mapping)
           </div>
 
           {/* Idol Selector Pills */}
           <div className="flex flex-wrap gap-2">
-            {companions.map((idol) => {
-              const isActive = activeVoiceTab === idol.id;
+            {companions.map((comp) => {
+              const isActive = activeVoiceTab === comp.id;
               return (
                 <button
-                  key={idol.id}
+                  key={comp.id}
                   type="button"
-                  onClick={() => setActiveVoiceTab(idol.id)}
+                  onClick={() => setActiveVoiceTab(comp.id)}
                   className={`px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 border cursor-pointer ${
                     isActive
                       ? 'bg-stone-900 text-white border-stone-900 shadow-xs'
                       : 'bg-stone-50 text-stone-600 border-stone-200 hover:bg-stone-100'
                   }`}
                 >
-                  <img
-                    src={idol.customAvatarUrl || idol.avatar}
-                    alt={idol.name_zh || idol.name_ko}
-                    referrerPolicy="no-referrer"
-                    className="w-6 h-6 rounded-full object-cover border border-slate-200"
+                  <CompanionAvatar
+                    companion={comp}
+                    sizeClassName="w-6 h-6"
                   />
-                  <span>{idol.name_zh}</span>
-                  <span className="text-[10px] opacity-75 font-normal">({idol.badge})</span>
+                  <span>{comp.name_ko || comp.name_kr}</span>
+                  <span className="text-[10px] opacity-75 font-normal">({comp.badge || 'BUDDY'})</span>
                 </button>
               );
             })}
@@ -782,50 +782,48 @@ export const SettingsView: React.FC<Props> = ({
 
           {/* Active Idol Slot Tuning Box */}
           {(() => {
-            const currentIdol = companions.find(c => c.id === activeVoiceTab) || PRESET_COMPANIONS.find(c => c.id === activeVoiceTab) || PRESET_COMPANIONS[0];
-            const slot = mmConfig.voice_slots?.[currentIdol.id] || {
-              voice_id: currentIdol.voice_slot || `voice_${currentIdol.id}_001`,
-              speed: currentIdol.tts_rate || 1.0,
+            const currentCompanion = companions.find(c => c.id === activeVoiceTab) || PRESET_COMPANIONS.find(c => c.id === activeVoiceTab) || PRESET_COMPANIONS[0];
+            const slot = mmConfig.voice_slots?.[currentCompanion.id] || {
+              voice_id: currentCompanion.voice_slot || `voice_${currentCompanion.id}_001`,
+              speed: currentCompanion.tts_rate || 1.0,
               pitch: 0,
               emotion: 'natural'
             };
 
             return (
               <div className="bg-stone-50 p-4 rounded-xl border border-stone-200 space-y-4">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between flex-wrap gap-3">
                   <div className="flex items-center gap-3.5">
-                    <img
-                      src={currentIdol.customAvatarUrl || currentIdol.avatar}
-                      alt={currentIdol.name_zh || currentIdol.name_ko}
-                      referrerPolicy="no-referrer"
-                      className="w-14 h-14 rounded-full object-cover border border-slate-200 shadow-sm"
+                    <CompanionAvatar
+                      companion={currentCompanion}
+                      sizeClassName="w-14 h-14"
                     />
                     <div>
                       <div className="text-sm font-bold text-stone-800">
-                        {currentIdol.name_ko} · {currentIdol.name_zh} ({currentIdol.badge})
+                        {currentCompanion.name_ko || currentCompanion.name_kr} ({currentCompanion.badge || 'BUDDY'})
                       </div>
-                      <div className="text-xs text-stone-500 mt-0.5">{currentIdol.voice_desc}</div>
+                      <div className="text-xs text-stone-500 mt-0.5">{currentCompanion.voice_desc || 'MiniMax Voice Clone'}</div>
                     </div>
                   </div>
 
                   <button
                     type="button"
-                    onClick={() => testIdolVoice(currentIdol.id)}
+                    onClick={() => testIdolVoice(currentCompanion.id)}
                     disabled={testingAudio}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-stone-900 text-white rounded-lg text-xs font-bold hover:bg-stone-800 transition shadow-xs disabled:opacity-50 cursor-pointer"
+                    className="flex items-center gap-1.5 px-3.5 py-2 bg-stone-900 text-white rounded-xl text-xs font-bold hover:bg-stone-800 transition shadow-xs disabled:opacity-50 cursor-pointer"
                   >
                     <Play size={13} className={testingAudio ? "animate-spin text-amber-300" : ""} />
-                    <span>{testingAudio ? 'Synthesizing...' : 'Test Voice (试听音色)'}</span>
+                    <span>{testingAudio ? '正在合成中...' : '试听音色 (Test Voice)'}</span>
                   </button>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
                   <div>
                     <div className="flex items-center justify-between mb-1">
-                      <label className="text-[11px] font-bold text-stone-600">Cloned Voice ID</label>
+                      <label className="text-[11px] font-bold text-stone-600">克隆声音 ID (Voice ID)</label>
                       <button
                         type="button"
-                        onClick={() => handlePasteToField((val) => handleUpdateVoiceSlot(currentIdol.id, { voice_id: val }))}
+                        onClick={() => handlePasteToField((val) => handleUpdateVoiceSlot(currentCompanion.id, { voice_id: val }))}
                         className="text-[9px] text-stone-500 hover:text-stone-800 flex items-center gap-0.5 cursor-pointer"
                       >
                         <Clipboard size={10} />
@@ -834,15 +832,15 @@ export const SettingsView: React.FC<Props> = ({
                     </div>
                     <div className="relative flex items-center">
                       <input
-                        id={`voice-slot-id-${currentIdol.id}`}
+                        id={`voice-slot-id-${currentCompanion.id}`}
                         type="text"
                         autoComplete="off"
                         spellCheck={false}
                         value={slot.voice_id}
-                        onChange={(e) => handleUpdateVoiceSlot(currentIdol.id, { voice_id: e.target.value })}
+                        onChange={(e) => handleUpdateVoiceSlot(currentCompanion.id, { voice_id: e.target.value })}
                         onPaste={(e) => {
                           const pasted = e.clipboardData.getData('text');
-                          if (pasted) handleUpdateVoiceSlot(currentIdol.id, { voice_id: pasted.trim() });
+                          if (pasted) handleUpdateVoiceSlot(currentCompanion.id, { voice_id: pasted.trim() });
                         }}
                         placeholder="voice_id_xxx"
                         className="w-full text-xs font-mono px-2.5 py-1.5 rounded-lg border border-stone-300 bg-white focus:outline-hidden focus:ring-2 focus:ring-stone-900 transition-all text-stone-900"
@@ -851,14 +849,14 @@ export const SettingsView: React.FC<Props> = ({
                   </div>
 
                   <div>
-                    <label className="block text-[11px] font-bold text-stone-600 mb-1">Speed: {slot.speed || 1.0}x</label>
+                    <label className="block text-[11px] font-bold text-stone-600 mb-1">语速: {slot.speed || 1.0}x</label>
                     <input
                       type="range"
                       min="0.7"
-                      max="1.4"
+                      max="1.5"
                       step="0.05"
                       value={slot.speed || 1.0}
-                      onChange={(e) => handleUpdateVoiceSlot(currentIdol.id, { speed: parseFloat(e.target.value) })}
+                      onChange={(e) => handleUpdateVoiceSlot(currentCompanion.id, { speed: parseFloat(e.target.value) })}
                       className="w-full accent-stone-800 cursor-pointer"
                     />
                   </div>
@@ -871,7 +869,7 @@ export const SettingsView: React.FC<Props> = ({
                       max="5"
                       step="1"
                       value={slot.pitch || 0}
-                      onChange={(e) => handleUpdateVoiceSlot(currentIdol.id, { pitch: parseInt(e.target.value) })}
+                      onChange={(e) => handleUpdateVoiceSlot(currentCompanion.id, { pitch: parseInt(e.target.value) })}
                       className="w-full accent-stone-800 cursor-pointer"
                     />
                   </div>
@@ -880,7 +878,7 @@ export const SettingsView: React.FC<Props> = ({
                     <label className="block text-[11px] font-bold text-stone-600 mb-1">Emotion Preset</label>
                     <select
                       value={slot.emotion || 'natural'}
-                      onChange={(e) => handleUpdateVoiceSlot(currentIdol.id, { emotion: e.target.value })}
+                      onChange={(e) => handleUpdateVoiceSlot(currentCompanion.id, { emotion: e.target.value })}
                       className="w-full text-xs px-2 py-1.5 rounded-lg border border-stone-300 bg-white focus:outline-hidden focus:ring-2 focus:ring-stone-900 transition-all text-stone-900"
                     >
                       <option value="natural">Natural (自然)</option>
@@ -992,6 +990,39 @@ export const SettingsView: React.FC<Props> = ({
             className={`flex-1 py-2 text-xs font-bold rounded-lg transition-colors cursor-pointer ${settings.languageMode === 'en' ? 'bg-white shadow-xs text-stone-900' : 'text-stone-500 hover:text-stone-700'}`}
           >
             English
+          </button>
+        </div>
+      </div>
+
+      {/* SECTION 6: Proactive Messages Toggle */}
+      <div className="bg-white p-6 rounded-2xl shadow-xs border border-stone-200 space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="space-y-0.5 max-w-[80%]">
+            <div className="flex items-center gap-2 text-stone-800 font-bold">
+              <Sparkles size={18} className="text-amber-600" />
+              <span className="text-sm font-bold">接收角色日常主动消息 (Enable Proactive Messages)</span>
+            </div>
+            <p className="text-xs text-stone-500 leading-relaxed">
+              开启后，未在聊天窗口的角色会结合真实时间与专属人设，偶尔发送日常问候（可随时关闭）。
+            </p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={settings.proactiveMessagesEnabled !== false}
+            onClick={() => onUpdateSettings({
+              ...settings,
+              proactiveMessagesEnabled: settings.proactiveMessagesEnabled === false ? true : false
+            })}
+            className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+              settings.proactiveMessagesEnabled !== false ? 'bg-stone-900' : 'bg-stone-200'
+            }`}
+          >
+            <span
+              className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
+                settings.proactiveMessagesEnabled !== false ? 'translate-x-5' : 'translate-x-0'
+              }`}
+            />
           </button>
         </div>
       </div>
