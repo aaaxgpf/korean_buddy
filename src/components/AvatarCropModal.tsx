@@ -184,7 +184,7 @@ export const AvatarCropModal: React.FC<AvatarCropModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-[250] flex items-center justify-center bg-black/65 backdrop-blur-md p-4 animate-in fade-in duration-200">
-      <div className="bg-white rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl border border-stone-200 flex flex-col animate-in zoom-in-95 duration-150">
+      <div className="bg-white rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl border border-stone-200 flex flex-col animate-in zoom-in-95 duration-150">
         
         {/* Header */}
         <div className="px-5 py-4 border-b border-stone-100 flex items-center justify-between">

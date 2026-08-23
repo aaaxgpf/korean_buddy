@@ -72,7 +72,7 @@ export const CompanionProfileModal: React.FC<Props> = ({ isOpen, onClose, compan
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-stone-900/80 backdrop-blur-sm sm:p-6 animate-in fade-in duration-200">
-      <div className="bg-white rounded-3xl w-full max-w-md overflow-hidden flex flex-col max-h-full shadow-2xl">
+      <div className="bg-white rounded-2xl w-full max-w-md overflow-hidden flex flex-col max-h-full shadow-2xl border border-stone-200/80">
         <div className="p-4 border-b border-stone-100 flex items-center justify-between sticky top-0 bg-white/80 backdrop-blur-md z-10">
           <h2 className="text-lg font-semibold text-stone-900">Buddy Profile</h2>
           <button onClick={onClose} className="p-2 text-stone-400 hover:bg-stone-100 rounded-full transition-colors cursor-pointer">

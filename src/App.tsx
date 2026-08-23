@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Navbar } from './components/Navbar';
 import { CustomPersonaModal } from './components/CustomPersonaModal';
 import { CreateCompanionModal } from './components/CreateCompanionModal';
@@ -413,7 +413,9 @@ export default function App() {
     // NOTE: Strictly retain character avatar, custom notes, remark, and persona settings when clearing chat history.
   };
 
-  // Handle Proactive Messages for idle or inactive companions with realistic delays and dynamic LLM / time awareness
+  // Handle Proactive Messages for idle or inactive companions with realistic delays, staggered per-companion timers, and dynamic LLM / time awareness
+  const lastProactiveMapRef = useRef<Record<string, number>>({});
+
   useEffect(() => {
     if (settings.proactiveMessagesEnabled === false) {
       return;
@@ -422,20 +424,30 @@ export default function App() {
     let timer: NodeJS.Timeout;
 
     const scheduleNextProactiveCheck = () => {
-      // Staggered trigger: random delay between 20 and 75 minutes (1,200,000ms - 4,500,000ms), with 2-minute test floor on fresh dev runs
-      const randomDelay = Math.floor(Math.random() * (4500000 - 1200000) + 1200000);
+      // Staggered ticker: 25 to 55 minutes between checks
+      const randomDelay = Math.floor(Math.random() * (3300000 - 1500000) + 1500000);
 
       timer = setTimeout(async () => {
         if (settings.proactiveMessagesEnabled === false) return;
 
-        // Pick an inactive companion who is NOT in the current active chat window
-        const candidateCompanions = companions.filter(c => c.id !== selectedCompanionId || chatView !== 'chat');
+        const nowTs = Date.now();
+        // Pick an inactive companion who is NOT in the current active chat window AND has not sent a proactive message in the last 45 minutes
+        const candidateCompanions = companions.filter(c => {
+          const isNotActive = c.id !== selectedCompanionId || chatView !== 'chat';
+          const lastSent = lastProactiveMapRef.current[c.id] || 0;
+          const isCool = (nowTs - lastSent) > 45 * 60 * 1000; // minimum 45m cooldown per character
+          const currentUnread = unreadMap[c.id] || 0;
+          return isNotActive && isCool && currentUnread < 3;
+        });
+
         if (candidateCompanions.length === 0) {
           scheduleNextProactiveCheck();
           return;
         }
 
+        // Stagger: pick one candidate at a time
         const randomComp = candidateCompanions[Math.floor(Math.random() * candidateCompanions.length)];
+        lastProactiveMapRef.current[randomComp.id] = nowTs;
         const effectiveCallSign = userProfile?.userCallSign || (userProfile?.userNickname && userProfile?.userNickname !== '더비 (THE B)' && userProfile?.userNickname !== '브리즈 (BRIIZE)' && userProfile?.userNickname !== '42 (사이)' ? userProfile?.userNickname : undefined) || randomComp.userNickname || '너';
         
         let korean = '';
@@ -533,7 +545,7 @@ export default function App() {
     scheduleNextProactiveCheck();
 
     return () => clearTimeout(timer);
-  }, [companions, selectedCompanionId, chatView, userProfile, settings.proactiveMessagesEnabled, settings.api_config]);
+  }, [companions, selectedCompanionId, chatView, userProfile, settings.proactiveMessagesEnabled, settings.api_config, unreadMap]);
 
   // Handlers for companion management
   const handleSelectCompanion = (comp: Companion) => {
@@ -759,32 +771,32 @@ export default function App() {
             {/* Left pane: Friends list */}
             <div className={`h-full shrink-0 w-full md:w-80 flex-col border-r border-stone-200/60 bg-transparent overflow-y-auto pb-32 md:pb-0 ${chatView === 'chat' ? 'hidden md:flex' : 'flex'}`}>
               <div className="px-4 py-6">
-                 <div className="flex items-center justify-between mb-4">
-                   <h2 className="text-xl font-semibold tracking-tight text-neutral-900 font-sans">Friends</h2>
-                   <button
-                     type="button"
-                     onClick={() => setIsCreateCompanionModalOpen(true)}
-                     className="text-slate-400 hover:text-neutral-700 hover:bg-black/[0.04] p-1.5 rounded-full transition-colors cursor-pointer"
-                     title="添加自定义好友"
-                   >
-                     <UserPlus className="w-5 h-5" />
-                   </button>
-                 </div>
-                 
-                 <div className="space-y-1">
-                   <div className="text-[10px] font-semibold tracking-wider text-stone-400 uppercase mb-2.5 ml-2 font-sans">My Profile</div>
-                   <div onClick={() => setIsProfileModalOpen(true)} className="flex items-center gap-3.5 p-2.5 rounded-2xl hover:bg-stone-100/70 transition-colors cursor-pointer group">
-                     <div className="w-12 h-12 rounded-lg bg-stone-100 text-stone-700 flex items-center justify-center font-medium text-lg overflow-hidden shrink-0 border border-stone-200 shadow-2xs">
-                       {userProfile.avatarUrl ? <img src={userProfile.avatarUrl} className="w-full h-full object-cover rounded-lg" referrerPolicy="no-referrer" /> : (userProfile.userName || userProfile.name || 'ME').slice(0, 2)}
-                     </div>
-                     <div className="flex flex-col flex-1 min-w-0">
-                       <span className="font-semibold text-[15px] text-stone-900 truncate font-sans">{userProfile.name}</span>
-                       <span className="text-xs text-stone-500 truncate mt-0.5 font-sans">{userProfile.status}</span>
-                     </div>
-                   </div>
-                   
-                   <div className="text-[10px] font-semibold tracking-wider text-stone-400 uppercase mt-6 mb-2.5 ml-2 font-sans">Buddies</div>
-                   <div className="space-y-0.5">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-xl font-semibold tracking-tight text-neutral-900 font-sans">Friends</h2>
+                  <button
+                    type="button"
+                    onClick={() => setIsCreateCompanionModalOpen(true)}
+                    className="text-slate-400 hover:text-neutral-700 hover:bg-black/[0.04] p-2 rounded-full transition-colors cursor-pointer"
+                    title="添加自定义好友"
+                  >
+                    <UserPlus className="w-5 h-5" />
+                  </button>
+                </div>
+                
+                <div className="space-y-1">
+                  <div className="text-[10px] font-semibold tracking-wider text-stone-400 uppercase mb-2.5 ml-2 font-sans">My Profile</div>
+                  <div onClick={() => setIsProfileModalOpen(true)} className="flex items-center gap-3.5 p-3.5 rounded-2xl hover:bg-stone-100/70 transition-colors cursor-pointer group">
+                    <div className="w-12 h-12 rounded-xl bg-stone-100 text-stone-700 flex items-center justify-center font-medium text-lg overflow-hidden shrink-0 border border-stone-200 shadow-2xs">
+                      {userProfile.avatarUrl ? <img src={userProfile.avatarUrl} className="w-full h-full object-cover rounded-xl" referrerPolicy="no-referrer" /> : (userProfile.userName || userProfile.name || 'ME').slice(0, 2)}
+                    </div>
+                    <div className="flex flex-col flex-1 min-w-0">
+                      <span className="font-semibold text-[15px] text-stone-900 truncate font-sans">{userProfile.name}</span>
+                      <span className="text-xs text-stone-500 truncate mt-0.5 font-sans">{userProfile.status}</span>
+                    </div>
+                  </div>
+                  
+                  <div className="text-[10px] font-semibold tracking-wider text-stone-400 uppercase mt-6 mb-2.5 ml-2 font-sans">Buddies</div>
+                  <div className="space-y-0.5">
                      {companions.map((comp, idx) => {
                        const unreadCount = unreadMap[comp.id] || 0;
                        const isSelected = currentCompanion.id === comp.id && chatView === 'chat';
@@ -792,28 +804,28 @@ export default function App() {
                        const nextComp = companions[idx + 1];
                        const isNextSelected = nextComp && currentCompanion.id === nextComp.id && chatView === 'chat';
 
-                       return (
-                         <React.Fragment key={comp.id}>
-                           <div 
-                             onClick={() => {
+                        return (
+                          <React.Fragment key={comp.id}>
+                            <div 
+                              onClick={() => {
                                 handleSelectCompanion(comp);
                                 setChatView('chat');
-                             }}
-                             className={`flex items-center gap-3.5 p-2.5 rounded-2xl hover:bg-stone-100/70 transition-colors cursor-pointer group ${isSelected ? 'bg-stone-100' : ''}`}
-                           >
-                             <div className="relative shrink-0">
-                               <CompanionAvatar
-                                 companion={comp}
-                                 sizeClassName="w-11 h-11"
-                                 alt={comp.name_ko || comp.name_kr}
-                                 className="border border-stone-200 shadow-xs flex-shrink-0"
-                               />
-                               {unreadCount > 0 && (
-                                 <span className="absolute -top-1 -right-1 min-w-[17px] h-[17px] px-1 bg-rose-700 text-white text-[10px] border-0 shadow-xs font-medium rounded-full flex items-center justify-center">
-                                   {unreadCount > 99 ? '99+' : unreadCount}
-                                 </span>
-                               )}
-                             </div>
+                              }}
+                              className={`flex items-center gap-3.5 p-3.5 rounded-2xl hover:bg-stone-100/70 transition-colors cursor-pointer group ${isSelected ? 'bg-stone-100 shadow-2xs' : ''}`}
+                            >
+                              <div className="relative shrink-0">
+                                <CompanionAvatar
+                                  companion={comp}
+                                  sizeClassName="w-11 h-11"
+                                  alt={comp.name_ko || comp.name_kr}
+                                  className="border border-stone-200/80 shadow-2xs flex-shrink-0"
+                                />
+                                {unreadCount > 0 && (
+                                  <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 bg-rose-600 text-white text-[10px] border-2 border-white shadow-xs font-semibold rounded-full flex items-center justify-center">
+                                    {unreadCount > 99 ? '99+' : unreadCount}
+                                  </span>
+                                )}
+                              </div>
                              <div className="flex flex-col flex-1 min-w-0 pb-0.5">
                                <div className="flex items-center justify-between gap-1.5">
                                  <span className="font-medium text-[15px] text-stone-900 shrink-0 whitespace-nowrap font-sans">{comp.name_ko || comp.name_kr || comp.remark}</span>

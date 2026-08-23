@@ -854,15 +854,26 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
                 {/* USER MESSAGE WRAPPER (Timestamp on outer left) */}
                 {isUser && (
                   <div className="flex items-end gap-1.5 max-w-[85%] md:max-w-[70%]">
-                    {/* Timestamp at bottom outer left of bubble */}
-                    <span className="text-[10px] text-stone-400 font-sans select-none shrink-0 self-end pb-0.5">
-                      {formatKakaoMessageTime(msg.timestamp)}
-                    </span>
+                    {/* Timestamp & Unread (1) at bottom outer left of bubble */}
+                    <div className="flex flex-col items-end shrink-0 self-end pb-0.5 select-none font-sans">
+                      {msg.isRead === false && (
+                        <span className="text-[11px] text-[#FEE500] font-bold leading-none mb-0.5" title="未读 (1)">
+                          1
+                        </span>
+                      )}
+                      <span className="text-[10px] text-stone-400">
+                        {formatKakaoMessageTime(msg.timestamp)}
+                      </span>
+                    </div>
 
                     {/* USER SPEECH BUBBLE */}
                     <div
-                      className={`relative px-3.5 py-2 sm:px-3.5 sm:py-2 transition-all ${
-                        theme === 'kkt' ? 'bg-[#FEE500] text-[#191919] rounded-2xl rounded-tr-sm shadow-2xs font-sans' : theme === 'wechat' ? 'bg-[#95EC69] text-black rounded-md' : 'bg-stone-800 text-white rounded-2xl rounded-tr-sm shadow-2xs'
+                      className={`relative px-4 py-3 transition-all ${
+                        theme === 'kkt'
+                          ? 'bg-[#FEE500] text-[#191919] rounded-2xl rounded-tr-xs shadow-2xs font-sans'
+                          : theme === 'wechat'
+                            ? 'bg-[#95EC69] text-stone-900 rounded-2xl rounded-tr-xs shadow-2xs'
+                            : 'bg-stone-900 text-white rounded-2xl rounded-tr-xs shadow-2xs'
                       }`}
                     >
                       {/* Pinned Core Memory Indicator */}
@@ -871,12 +882,12 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
                           className="absolute top-1.5 right-1.5 flex items-center justify-center pointer-events-none" 
                           title="核心记忆 (Permanent Key Memory)"
                         >
-                          <Bookmark className="w-3.5 h-3.5 text-slate-400 opacity-60 stroke-[1.5]" />
+                          <Bookmark className="w-3.5 h-3.5 text-stone-400/80 stroke-[1.5]" />
                         </span>
                       )}
                       <div className="space-y-2">
                         {msg.image && (
-                          <div className="rounded-xl overflow-hidden max-w-[220px] max-h-[220px] bg-white">
+                          <div className="rounded-xl overflow-hidden max-w-[220px] max-h-[220px] bg-stone-100">
                             <img src={msg.image} alt="Attached" className="w-full h-full object-cover" />
                           </div>
                         )}
@@ -901,7 +912,7 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
                         )}
 
                         {msg.content && (
-                          <p className="text-sm leading-relaxed break-words whitespace-pre-wrap">
+                          <p className="text-sm leading-relaxed break-words whitespace-pre-wrap font-normal">
                             {msg.content}
                           </p>
                         )}
@@ -916,8 +927,10 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
                     <div className="flex items-end gap-1.5">
                       {/* IDOL SPEECH BUBBLE */}
                       <div
-                        className={`relative p-3 sm:p-3.5 transition-all ${
-                          theme === 'wechat' ? 'bg-white text-[#2D2D2D] rounded-md shadow-xs' : 'bg-white text-stone-900 rounded-2xl rounded-tl-sm shadow-xs'
+                        className={`relative p-3.5 sm:p-4 transition-all ${
+                          theme === 'wechat'
+                            ? 'bg-white text-stone-900 rounded-2xl rounded-tl-xs shadow-2xs border border-stone-200/50'
+                            : 'bg-white text-stone-900 rounded-2xl rounded-tl-xs shadow-2xs border border-black/[0.04]'
                         }`}
                       >
                         <div className="space-y-2.5">
@@ -950,7 +963,7 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
                                 }}
                                 className={`p-1.5 rounded-full transition-all flex items-center justify-center ${
                                   speakingMsgId === msg.id 
-                                    ? 'bg-amber-100 text-amber-900 border border-amber-200/50 shadow-xs animate-pulse' 
+                                    ? 'bg-stone-900 text-white shadow-xs animate-pulse' 
                                     : 'text-stone-400 hover:text-stone-800 hover:bg-stone-100'
                                 }`}
                                 title="语音朗读 (Voice Readout)"
@@ -969,7 +982,7 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
                                 className={`p-1.5 rounded-full text-stone-400 hover:text-stone-800 hover:bg-stone-100 transition-all ${isLoading && isLastAssistant ? 'opacity-50 cursor-not-allowed' : ''}`}
                                 title="重新生成回复 (Regenerate)"
                               >
-                                <RotateCcw className={`w-3.5 h-3.5 ${isLoading && isLastAssistant ? 'animate-spin text-amber-600' : ''}`} />
+                                <RotateCcw className={`w-3.5 h-3.5 ${isLoading && isLastAssistant ? 'animate-spin text-stone-700' : ''}`} />
                               </button>
 
                               {/* Bookmark */}
@@ -981,12 +994,12 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
                                 }}
                                 className={`p-1.5 rounded-full transition-all ${
                                   isMsgBookmarked
-                                    ? 'bg-amber-100 text-amber-900'
+                                    ? 'bg-stone-800 text-white shadow-xs'
                                     : 'text-stone-400 hover:text-stone-800 hover:bg-stone-100'
                                 }`}
                                 title="收藏句子 (Save Sentence)"
                               >
-                                <Bookmark className={`w-3.5 h-3.5 ${isMsgBookmarked ? 'fill-amber-600 text-amber-600' : ''}`} />
+                                <Bookmark className={`w-3.5 h-3.5 ${isMsgBookmarked ? 'fill-white text-white' : ''}`} />
                               </button>
 
                               {/* Core Memory Pin quick toggle */}
@@ -998,12 +1011,12 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
                                 }}
                                 className={`p-1.5 rounded-full transition-all ${
                                   msg.isPinned || msg.isMemory
-                                    ? 'bg-amber-50 text-amber-900'
+                                    ? 'bg-stone-200 text-stone-900 font-medium'
                                     : 'text-stone-400 hover:text-stone-800 hover:bg-stone-100'
                                 }`}
                                 title={msg.isPinned || msg.isMemory ? "取消核心记忆" : "设为核心记忆 (Set Core Memory)"}
                               >
-                                <Bookmark className={`w-3.5 h-3.5 stroke-[1.5] ${msg.isPinned || msg.isMemory ? 'text-amber-700 fill-amber-500/20' : 'text-slate-400 opacity-60'}`} />
+                                <Bookmark className={`w-3.5 h-3.5 stroke-[1.5] ${msg.isPinned || msg.isMemory ? 'text-stone-800 fill-stone-800/20' : 'text-slate-400 opacity-60'}`} />
                               </button>
 
                               <div className="h-3 w-[1px] bg-stone-200/60 mx-1 shrink-0" />
@@ -1046,7 +1059,7 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
                                   }}
                                   className={`p-1.5 rounded-full transition-all ${
                                     (isSectionVisible(msg.id, 'zh') || isSectionVisible(msg.id, 'en'))
-                                      ? 'bg-amber-100 text-amber-900'
+                                      ? 'bg-stone-800 text-white shadow-xs'
                                       : 'text-stone-400 hover:text-stone-800 hover:bg-stone-100'
                                   }`}
                                   title="翻译切换 (Translate Toggle)"
@@ -1077,7 +1090,7 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
                                   }}
                                   className={`p-1.5 rounded-full transition-all ${
                                     (isSectionVisible(msg.id, 'vocab') || isSectionVisible(msg.id, 'grammar') || isSectionVisible(msg.id, 'tip'))
-                                      ? 'bg-amber-100 text-amber-900'
+                                      ? 'bg-stone-800 text-white shadow-xs'
                                       : 'text-stone-400 hover:text-stone-800 hover:bg-stone-100'
                                   }`}
                                   title="学习解析 (Learning Analysis)"
@@ -1096,7 +1109,7 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
                                   }}
                                   className={`p-1.5 rounded-full transition-all ${
                                     showVocab
-                                      ? 'bg-amber-100 text-amber-900 border border-amber-200/50'
+                                      ? 'bg-stone-800 text-white shadow-xs'
                                       : 'text-stone-400 hover:text-stone-800 hover:bg-stone-100'
                                   }`}
                                   title="单词解析"
@@ -1115,7 +1128,7 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
                                   }}
                                   className={`p-1.5 rounded-full transition-all ${
                                     showGrammar
-                                      ? 'bg-emerald-100 text-emerald-900 border border-emerald-200/50'
+                                      ? 'bg-stone-800 text-white shadow-xs'
                                       : 'text-stone-400 hover:text-stone-800 hover:bg-stone-100'
                                   }`}
                                   title="语法解析"
@@ -1134,7 +1147,7 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
                                   }}
                                   className={`p-1.5 rounded-full transition-all ${
                                     showTip
-                                      ? 'bg-purple-100 text-purple-900 border border-purple-200/50'
+                                      ? 'bg-stone-800 text-white shadow-xs'
                                       : 'text-stone-400 hover:text-stone-800 hover:bg-stone-100'
                                   }`}
                                   title="口语提示"
@@ -1192,15 +1205,15 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
 
                           {/* Expanded Section: Vocabulary Cards */}
                           {showLearningUI && showVocab && msg.vocabulary && (
-                            <div className="space-y-2 pt-1 border-t border-stone-100 animate-fadeIn">
-                              <div className="flex items-center justify-between text-[11px] font-bold text-stone-700">
-                                <span className="flex items-center gap-1">
-                                  <BookOpen className="w-3.5 h-3.5 text-amber-600" />
-                                  <span>Core Vocabulary</span>
+                            <div className="space-y-2 pt-2 border-t border-black/[0.04] animate-fadeIn font-sans">
+                              <div className="flex items-center justify-between text-[11px] text-stone-500 font-medium">
+                                <span className="flex items-center gap-1.5 text-stone-700">
+                                  <BookOpen className="w-3.5 h-3.5 text-stone-600 stroke-[1.5]" />
+                                  <span className="font-semibold text-xs tracking-tight">Core Vocabulary</span>
                                 </span>
                                 <button
                                   onClick={() => toggleMessageSection(msg.id, 'vocab')}
-                                  className="text-[10px] text-stone-400 hover:text-stone-800"
+                                  className="text-[11px] text-stone-400 hover:text-stone-700 transition-colors"
                                 >
                                   Collapse
                                 </button>
@@ -1211,20 +1224,20 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
                                   return (
                                     <div
                                       key={i}
-                                      className={`py-3 flex items-start justify-between gap-4 font-sans ${
+                                      className={`py-2.5 flex items-start justify-between gap-4 font-sans ${
                                         i < msg.vocabulary.length - 1 ? 'border-b border-black/[0.04]' : ''
                                       }`}
                                     >
                                       <div className="flex-1 min-w-0">
                                         <div className="flex items-baseline">
-                                          <span className="text-slate-800 font-normal text-sm">{v.hangul || v.word}</span>
+                                          <span className="text-slate-900 font-medium text-sm">{v.hangul || v.word}</span>
                                           {v.type && (
                                             <span className="text-[11px] text-slate-400 font-light ml-1.5">
                                               · {v.type}
                                             </span>
                                           )}
                                         </div>
-                                        <p className="text-[13px] text-slate-600 font-normal mt-1.5 leading-normal">
+                                        <p className="text-[13px] text-slate-600 font-normal mt-1 leading-normal">
                                           {languageMode === 'en' ? v.meaning_en : v.meaning_zh}
                                         </p>
                                       </div>
@@ -1244,7 +1257,7 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
                                         className="p-1 text-slate-300 hover:text-slate-600 transition-colors shrink-0 mt-0.5"
                                         title="Save to Notebook"
                                       >
-                                        <Bookmark className={`w-4 h-4 transition-colors ${isSaved ? 'fill-slate-600 text-slate-600' : 'text-slate-300 hover:text-slate-600'}`} />
+                                        <Bookmark className={`w-4 h-4 transition-colors ${isSaved ? 'fill-slate-700 text-slate-700' : 'text-slate-300 hover:text-slate-600'}`} />
                                       </button>
                                     </div>
                                   );
@@ -1255,42 +1268,49 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
 
                           {/* Expanded Section: Grammar Cards */}
                           {showLearningUI && showGrammar && msg.grammar_points && (
-                            <div className="space-y-2 pt-1 border-t border-stone-100 animate-fadeIn">
-                              <div className="flex items-center justify-between text-[11px] font-bold text-stone-700">
-                                <span className="flex items-center gap-1">
-                                  <Sliders className="w-3.5 h-3.5 text-emerald-600" />
-                                  <span>Grammar Analysis</span>
+                            <div className="space-y-2 pt-2 border-t border-black/[0.04] animate-fadeIn font-sans">
+                              <div className="flex items-center justify-between text-[11px] text-stone-500 font-medium pb-0.5">
+                                <span className="flex items-center gap-1.5 text-stone-700">
+                                  <Sliders className="w-3.5 h-3.5 text-stone-600 stroke-[1.5]" />
+                                  <span className="font-semibold text-xs tracking-tight">Grammar Analysis</span>
                                 </span>
                                 <button
                                   onClick={() => toggleMessageSection(msg.id, 'grammar')}
-                                  className="text-[10px] text-stone-400 hover:text-stone-800"
+                                  className="text-[11px] text-stone-400 hover:text-stone-700 transition-colors"
                                 >
                                   Collapse
                                 </button>
                               </div>
-                              {msg.grammar_points.map((g, i) => (
-                                <div key={i} className="p-2.5 rounded-xl bg-emerald-50/60 text-xs">
-                                  <span className="text-emerald-950 font-mono font-medium">{g.pattern}</span>
-                                  <p className="font-normal text-emerald-900 text-[11px] mt-0.5">{g.title_zh}</p>
-                                  <p className="text-[11px] text-stone-600 mt-1">{g.explanation_zh}</p>
-                                </div>
-                              ))}
+                              <div className="space-y-2">
+                                {msg.grammar_points.map((g, i) => (
+                                  <div key={i} className="p-3 rounded-xl bg-stone-50/80 border border-stone-200/60 text-xs transition-all">
+                                    <div className="flex items-baseline justify-between gap-2">
+                                      <span className="font-semibold text-stone-900 text-[13px] tracking-tight">{g.pattern}</span>
+                                    </div>
+                                    <p className="font-medium text-stone-700 text-xs mt-1">{languageMode === 'en' ? (g.title_en || g.title_zh) : g.title_zh}</p>
+                                    <p className="text-xs text-stone-500 font-normal mt-1 leading-relaxed">{languageMode === 'en' ? (g.explanation_en || g.explanation_zh) : g.explanation_zh}</p>
+                                  </div>
+                                ))}
+                              </div>
                             </div>
                           )}
 
                           {/* Expanded Section: Learning Tip */}
                           {showLearningUI && showTip && msg.learning_tip && (
-                            <div className="p-2.5 rounded-xl bg-purple-50/70 text-xs text-purple-950 animate-fadeIn">
-                              <div className="flex items-center justify-between">
-                                <span className="font-bold text-[11px]">💡 Context Tips</span>
+                            <div className="p-3 rounded-xl bg-stone-50/90 border border-stone-200/70 text-xs text-stone-700 animate-fadeIn font-sans mt-2">
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="flex items-center gap-1.5 font-semibold text-xs text-stone-800">
+                                  <Lightbulb className="w-3.5 h-3.5 text-amber-600 stroke-[1.5]" />
+                                  <span>Context & Nuance</span>
+                                </span>
                                 <button
                                   onClick={() => toggleMessageSection(msg.id, 'tip')}
-                                  className="text-[10px] text-stone-400 hover:text-stone-800"
+                                  className="text-[11px] text-stone-400 hover:text-stone-700 transition-colors"
                                 >
                                   Collapse
                                 </button>
                               </div>
-                              <p className="mt-1 text-[11px] text-purple-900">{msg.learning_tip}</p>
+                              <p className="mt-1 text-xs text-stone-600 font-normal leading-relaxed">{msg.learning_tip}</p>
                             </div>
                           )}
 

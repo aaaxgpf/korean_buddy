@@ -66,7 +66,7 @@ export const UserProfileModal: React.FC<Props> = ({ isOpen, onClose, profile, on
 
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-      <div className="bg-white rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl border border-stone-100 flex flex-col max-h-[90vh]">
+      <div className="bg-white rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl border border-stone-200/80 flex flex-col max-h-[90vh]">
         {/* Header */}
         <div className="px-5 py-4 border-b border-stone-100 flex items-center justify-between shrink-0">
           <h2 className="font-semibold text-base text-stone-900">

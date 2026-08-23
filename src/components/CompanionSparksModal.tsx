@@ -45,7 +45,7 @@ export const CompanionSparksModal: React.FC<CompanionSparksModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fadeIn">
-      <div className="bg-white rounded-3xl border border-[#E0DED7] shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden">
+      <div className="bg-white rounded-2xl border border-stone-200/80 shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden">
         
         {/* Modal Header */}
         <div className="p-6 bg-[#FAF9F6] border-b border-[#E0DED7] flex items-center justify-between">

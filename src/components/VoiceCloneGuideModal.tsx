@@ -52,10 +52,10 @@ export const VoiceCloneGuideModal: React.FC<VoiceCloneGuideModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
-      <div className="bg-[#FAF9F6] w-full max-w-3xl max-h-[90vh] rounded-3xl shadow-2xl border border-stone-200 flex flex-col overflow-hidden text-stone-800">
+      <div className="bg-[#FAF9F6] w-full max-w-3xl max-h-[90vh] rounded-2xl shadow-2xl border border-stone-200 flex flex-col overflow-hidden text-stone-800">
         
         {/* Header */}
-        <div className="p-5 sm:p-6 bg-gradient-to-r from-stone-900 via-stone-800 to-stone-900 text-white flex items-center justify-between">
+        <div className="p-5 sm:p-6 bg-stone-900 text-white flex items-center justify-between border-b border-stone-800">
           <div className="flex items-center space-x-3">
             <div className="w-10 h-10 rounded-2xl bg-amber-500/20 border border-amber-400/40 flex items-center justify-center text-amber-300">
               <Mic className="w-5 h-5" />

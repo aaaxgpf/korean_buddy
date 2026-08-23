@@ -380,7 +380,7 @@ export const FlashcardsView: React.FC<FlashcardsViewProps> = ({
               {/* The Interactive Flashcard */}
               <div
                 onClick={() => setIsFlipped(!isFlipped)}
-                className={`min-h-[340px] rounded-3xl p-6 sm:p-8 cursor-pointer transition-all duration-300 border flex flex-col justify-between shadow-sm relative select-none ${
+                className={`min-h-[340px] rounded-2xl p-6 sm:p-8 cursor-pointer transition-all duration-300 border flex flex-col justify-between shadow-sm relative select-none ${
                   isFlipped
                     ? 'bg-[#FAF9F6] border-[#8B7E74]'
                     : 'bg-white border-[#E0DED7] hover:border-[#8B7E74]'
@@ -738,7 +738,7 @@ export const FlashcardsView: React.FC<FlashcardsViewProps> = ({
       {viewMode === 'dictation' && (
         <div className="space-y-6 max-w-2xl mx-auto">
           {filteredVocab.length > 0 ? (
-            <div className="p-6 sm:p-8 bg-white rounded-3xl border border-[#E0DED7] shadow-sm space-y-6">
+            <div className="p-6 sm:p-8 bg-white rounded-2xl border border-[#E0DED7] shadow-sm space-y-6">
               
               <div className="flex items-center justify-between text-xs text-[#71675E]">
                 <span>Write Word {currentIndex + 1} / {filteredVocab.length}</span>
@@ -831,7 +831,7 @@ export const FlashcardsView: React.FC<FlashcardsViewProps> = ({
       {/* Add Custom Word Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs">
-          <div className="bg-white border border-[#E0DED7] rounded-3xl w-full max-w-lg p-6 sm:p-8 shadow-xl space-y-5 text-[#2D2D2D]">
+          <div className="bg-white border border-[#E0DED7] rounded-2xl w-full max-w-lg p-6 sm:p-8 shadow-xl space-y-5 text-[#2D2D2D]">
             <h3 className=" font-bold text-xl text-[#1A1A1A] flex items-center gap-2.5">
               <Plus className="w-5 h-5 text-[#8B7E74]" />
               <span>Add Custom Word</span>
