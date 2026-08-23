@@ -163,28 +163,28 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
 
   const messages = companionMessages || [];
 
-  const scrollToBottom = (behavior: ScrollBehavior = 'smooth') => {
-    messagesEndRef.current?.scrollIntoView({ behavior, block: 'end' });
+  const scrollToBottom = (behavior: ScrollBehavior = 'auto') => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior, block: 'end' });
+    }
   };
 
-  // 切换角色时立即无动画触底，且确保渲染完成后触底
+  // 切换好友或刚打开应用时，无需平滑滚动，直接瞬时定位到最新一条
   useEffect(() => {
-    const timer = setTimeout(() => {
-      requestAnimationFrame(() => {
-        scrollToBottom('auto');
-      });
-    }, 50);
-    return () => clearTimeout(timer);
+    // 立即执行一次
+    scrollToBottom('auto');
+    // 50ms 与 150ms 延迟双重保险（防止图片/字体异步撑开高度后位置上浮）
+    const timer1 = setTimeout(() => scrollToBottom('auto'), 50);
+    const timer2 = setTimeout(() => scrollToBottom('auto'), 150);
+    return () => {
+      clearTimeout(timer1);
+      clearTimeout(timer2);
+    };
   }, [companion.id]);
 
-  // 收到新消息时平滑触底
+  // 用户发送/收到新消息时平滑触底
   useEffect(() => {
-    const timer = setTimeout(() => {
-      requestAnimationFrame(() => {
-        scrollToBottom('smooth');
-      });
-    }, 50);
-    return () => clearTimeout(timer);
+    scrollToBottom('smooth');
   }, [messages.length]);
 
   // Smooth scroll when loading
@@ -1335,7 +1335,7 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
           </div>
         )}
 
-        <div ref={messagesEndRef} />
+        <div ref={messagesEndRef} className="h-px w-full" />
       </div>
 
       {/* CHAT INPUT BAR (Floating White Capsule on Transparent Background) */}
