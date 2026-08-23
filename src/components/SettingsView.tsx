@@ -20,7 +20,8 @@ import {
   EyeOff,
   Clipboard,
   X,
-  Radio
+  Radio,
+  ExternalLink
 } from 'lucide-react';
 import { AppSettings, UserProfile, LLMConfig, MiniMaxConfig, VoiceSlotConfig, Companion } from '../types';
 import { PRESET_COMPANIONS } from '../data/companions';
@@ -278,10 +279,10 @@ export const SettingsView: React.FC<Props> = ({
   // Provider presets
   const providerPresets: Record<string, { defaultModel: string; defaultBaseURL: string; placeholderKey: string; popularModels: string[] }> = {
     gemini: {
-      defaultModel: 'gemini-3.7-flash',
+      defaultModel: 'gemini-2.0-flash',
       defaultBaseURL: '',
-      placeholderKey: 'AQ.Ab... 或 AIzaSy...',
-      popularModels: ['gemini-3.7-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite', 'gemini-flash-lite-latest', 'gemini-3.6-flash', 'gemini-3.1-pro-preview']
+      placeholderKey: 'AIzaSy... (可从 aistudio.google.com 免费获取)',
+      popularModels: ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-2.0-flash-lite', 'gemini-1.5-pro', 'gemini-2.5-flash']
     },
     anthropic: {
       defaultModel: 'claude-3-5-sonnet-20241022',
@@ -490,15 +491,55 @@ export const SettingsView: React.FC<Props> = ({
                 </button>
               )}
             </div>
-            {llmConfig.provider === 'gemini' && !llmConfig.apiKey && (
-              <p className="mt-1.5 text-[11px] text-emerald-700 flex items-center gap-1 font-medium">
-                <span>✨ 默认使用系统内置 Gemini 引擎（留空即可直接免费畅聊伴学）</span>
-              </p>
-            )}
-            {llmConfig.provider === 'gemini' && Boolean(llmConfig.apiKey) && llmConfig.apiKey.startsWith('sk-') && (
-              <p className="mt-1.5 text-[11px] text-amber-700 bg-amber-50 p-2 rounded-lg border border-amber-200 flex items-center gap-1">
-                <span>⚠️ 提示：您填入的 Key 以 sk- 开头（多为 OpenAI 或 DeepSeek Key），Google Gemini 官方 Key 通常以 AQ.Ab... 或 AIzaSy... 开头。若使用代理或自建端点请配合在下方填写 Base URL。</span>
-              </p>
+            {llmConfig.provider === 'gemini' && (
+              <div className="mt-2 space-y-1.5">
+                <div className="flex items-center justify-between text-[11px]">
+                  <a
+                    href="https://aistudio.google.com/app/apikey"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-indigo-600 hover:text-indigo-800 font-medium hover:underline inline-flex items-center gap-1"
+                  >
+                    <span>👉 点此前往 Google AI Studio 免费获取 Gemini API Key (推荐)</span>
+                    <ExternalLink size={11} />
+                  </a>
+                </div>
+                {!llmConfig.apiKey && (
+                  <p className="text-[11px] text-emerald-700 flex items-center gap-1 font-medium">
+                    <span>✨ 留空时系统将使用内置免费通道畅聊</span>
+                  </p>
+                )}
+                {Boolean(llmConfig.apiKey) && llmConfig.apiKey.startsWith('sk-') && (
+                  <div className="text-[11px] text-amber-800 bg-amber-50 p-2.5 rounded-xl border border-amber-200 space-y-1.5">
+                    <p className="font-semibold flex items-center gap-1">
+                      <span>⚠️ 检测到您的 Key 为 "sk-" 格式（属于 OpenAI / DeepSeek / 中转服务商）：</span>
+                    </p>
+                    <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                      <button
+                        type="button"
+                        onClick={() => handleSelectProvider('deepseek')}
+                        className="px-2 py-0.5 bg-amber-200 hover:bg-amber-300 text-amber-900 rounded-md font-bold text-[10px] cursor-pointer transition"
+                      >
+                        一键切换为 DeepSeek
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleSelectProvider('openai')}
+                        className="px-2 py-0.5 bg-amber-200 hover:bg-amber-300 text-amber-900 rounded-md font-bold text-[10px] cursor-pointer transition"
+                      >
+                        一键切换为 OpenAI
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleSelectProvider('custom')}
+                        className="px-2 py-0.5 bg-amber-200 hover:bg-amber-300 text-amber-900 rounded-md font-bold text-[10px] cursor-pointer transition"
+                      >
+                        一键切换为 Custom (中转)
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
             )}
           </div>
 
@@ -526,7 +567,7 @@ export const SettingsView: React.FC<Props> = ({
                   type="text"
                   autoComplete="off"
                   spellCheck={false}
-                  placeholder={providerPresets[llmConfig.provider]?.defaultBaseURL || 'https://api.openai.com/v1'}
+                  placeholder={llmConfig.provider === 'gemini' ? 'https://generativelanguage.googleapis.com (官方端点，留空即可)' : (providerPresets[llmConfig.provider]?.defaultBaseURL || 'https://api.openai.com/v1')}
                   value={llmConfig.baseURL || ''}
                   onChange={(e) => handleUpdateLLMField('baseURL', e.target.value)}
                   onPaste={(e) => {

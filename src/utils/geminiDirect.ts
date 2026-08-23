@@ -55,6 +55,30 @@ function buildGeminiUrl(baseURL: string | undefined, model: string, apiKey: stri
 }
 
 /**
+ * Format friendly error messages for user
+ */
+function formatLLMError(error: any, provider: string, apiKey: string): Error {
+  const rawMsg = error?.message || String(error || '');
+  const cleanKey = (apiKey || '').trim();
+
+  if (rawMsg.includes('invalid authentication credentials') || rawMsg.includes('Expected OAuth 2') || rawMsg.includes('API_KEY_INVALID') || rawMsg.includes('API key not valid') || rawMsg.includes('401')) {
+    if (provider === 'gemini' && cleanKey.startsWith('sk-')) {
+      return new Error('Google 鉴权失败：您填入的 API Key 以 "sk-" 开头（这是 OpenAI / DeepSeek / 中转服务商的 Key 格式）。请在上方【LLM Provider】中切换为【OpenAI】、【DeepSeek】或【Custom (中转)】即可正常使用！');
+    }
+    if (provider === 'gemini') {
+      return new Error('Google Gemini API 鉴权失败：API Key 无效或未开通。请前往 Google AI Studio (https://aistudio.google.com/app/apikey) 免费创建并复制官方 API Key（通常以 AIzaSy 开头），或在上方切换为其他大模型服务商。');
+    }
+    return new Error(`${provider.toUpperCase()} 鉴权失败 (401)：API Key 无效或已过期，请检查填入的 Key 是否正确。`);
+  }
+
+  if (rawMsg.includes('429') || rawMsg.includes('RESOURCE_EXHAUSTED') || rawMsg.includes('Quota')) {
+    return new Error(`${provider.toUpperCase()} API 额度超限 (429)：当前 API Key 的免费配额或并发速率已达上限，请稍后再试或切换模型/服务商。`);
+  }
+
+  return error instanceof Error ? error : new Error(rawMsg);
+}
+
+/**
  * Direct Gemini Connection Test in Browser
  * Uses both ?key= query parameter AND x-goog-api-key header for bulletproof Google API gateway recognition.
  */
@@ -64,17 +88,26 @@ export async function directTestGeminiConnection(config: DirectGeminiConfig): Pr
     throw new Error('请先填入有效的 Google Gemini API Key');
   }
 
-  // Model fallback chain: try user configured model first, fallback to stable models
+  // If user pasted an sk- key while Gemini is selected, give immediate guidance
+  if (cleanKey.startsWith('sk-')) {
+    throw new Error('检测到您填入的 API Key 以 "sk-" 开头（属于 OpenAI / DeepSeek / 代理中转 Key 格式）。请在上方【LLM Provider】中切换为【OpenAI】、【DeepSeek】或【Custom (中转)】！');
+  }
+
+  // Model fallback chain: try user configured model first, fallback to stable public models
   const candidateModels = [
     config.model?.trim(),
     'gemini-2.0-flash',
     'gemini-1.5-flash',
+    'gemini-2.0-flash-lite',
     'gemini-1.5-pro'
   ].filter(Boolean) as string[];
 
+  // Deduplicate candidate models
+  const uniqueCandidates = Array.from(new Set(candidateModels));
+
   let lastError: any = null;
 
-  for (const modelName of candidateModels) {
+  for (const modelName of uniqueCandidates) {
     const url = buildGeminiUrl(config.baseURL, modelName, cleanKey);
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
@@ -107,19 +140,21 @@ export async function directTestGeminiConnection(config: DirectGeminiConfig): Pr
         const errData = await response.json().catch(() => ({}));
         const errMsg = errData?.error?.message || `HTTP ${response.status}`;
         lastError = new Error(errMsg);
-        if (response.status !== 404 && !errMsg.includes('not found')) {
-          throw lastError;
+
+        // If custom baseURL is set, do not cycle through standard google endpoints
+        if (config.baseURL?.trim()) {
+          throw formatLLMError(lastError, 'gemini', cleanKey);
         }
       }
     } catch (e: any) {
       lastError = e;
-      if (!e?.message?.includes('not found') && !e?.message?.includes('404')) {
-        throw e;
+      if (config.baseURL?.trim()) {
+        throw formatLLMError(e, 'gemini', cleanKey);
       }
     }
   }
 
-  throw lastError || new Error('无法连接至 Gemini API，请检查 Key 或网络');
+  throw formatLLMError(lastError || new Error('无法连接至 Gemini API，请检查 Key 或网络'), 'gemini', cleanKey);
 }
 
 /**
@@ -220,12 +255,13 @@ export async function directSendGeminiChat(params: DirectChatParams): Promise<an
   }
 
   const userModel = (params.model?.trim() || 'gemini-2.0-flash').replace(/^models\//, '');
-  const candidateModels = [
+  const candidateModels = Array.from(new Set([
     userModel,
     'gemini-2.0-flash',
     'gemini-1.5-flash',
+    'gemini-2.0-flash-lite',
     'gemini-1.5-pro'
-  ];
+  ]));
 
   const character = params.character;
   const userName = params.userName || params.userNickname || '사용자';
@@ -417,8 +453,10 @@ ${pinnedMemoriesSection}
         const errData = await response.json().catch(() => ({}));
         const errMsg = errData?.error?.message || `HTTP ${response.status}`;
         lastError = new Error(errMsg);
-        if (response.status !== 404 && !errMsg.includes('not found')) {
-          throw lastError;
+
+        // If custom baseURL is set, do not cycle through standard google endpoints
+        if (params.baseURL?.trim()) {
+          throw formatLLMError(lastError, 'gemini', cleanKey);
         }
         continue;
       }
@@ -453,13 +491,13 @@ ${pinnedMemoriesSection}
       }
     } catch (e: any) {
       lastError = e;
-      if (!e?.message?.includes('not found') && !e?.message?.includes('404')) {
-        throw e;
+      if (params.baseURL?.trim()) {
+        throw formatLLMError(e, 'gemini', cleanKey);
       }
     }
   }
 
-  throw lastError || new Error('Gemini API 调用异常');
+  throw formatLLMError(lastError || new Error('Gemini API 调用异常'), 'gemini', cleanKey);
 }
 
 /**

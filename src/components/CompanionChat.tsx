@@ -462,12 +462,21 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
       );
     } catch (err: any) {
       console.error('Chat error:', err);
+      const errMsg = err?.message || '无法连接到大模型服务器';
+      const isAuthError = errMsg.includes('鉴权') || errMsg.includes('401') || errMsg.includes('API Key') || errMsg.includes('NO_API_KEY') || errMsg.includes('OAuth 2');
+
       const networkErrMessage: ChatMessage = {
         id: `err_${Date.now()}`,
         role: 'assistant',
-        content: `⚠️ 网络连接异常：${err?.message || '无法连接到服务器'}`,
-        korean: '네트워크 연결 오류가 발생했습니다.',
-        translation_zh: '⚠️ 网络连接异常，请检查网络后重试。',
+        content: isAuthError
+          ? `⚠️ ${errMsg}`
+          : `⚠️ 请求异常：${errMsg}`,
+        korean: isAuthError
+          ? 'API 키 확인이 필요합니다. 오른쪽 상단 [Settings]에서 키를 확인해 주세요.'
+          : '일시적인 연결 오류가 발생했습니다. 다시 시도해 주세요.',
+        translation_zh: isAuthError
+          ? `⚠️ ${errMsg}。请点击右上角「Settings 设置」检查或更换 API Key。`
+          : `⚠️ 请求异常：${errMsg}。请稍后重试或在设置中检查 API 配置。`,
         timestamp: Date.now(),
         isRead: true,
       };
