@@ -602,13 +602,7 @@ app.post("/api/chat", async (req, res) => {
       ? character.personality_traits.map((t: string) => `- ${t}`).join('\n')
       : '';
 
-    const customNotes = (
-      character?.customNotes ||
-      character?.persona ||
-      character?.system_prompt_appendix ||
-      character?.systemPromptAppendix ||
-      ''
-    ).trim();
+    const customNotes = (character?.customNotes || '').trim();
 
     const customNotesSection = customNotes
       ? `\n[CRITICAL SUPREME DIRECTIVE - DYNAMIC RELATIONSHIP & CUSTOM PERSONA]\n当前你与用户的真实核心动态关系与专属设定：\n"${customNotes}"\n【最高行动准则】：你必须将以上关系与人设深度贯彻到字里行间的小心思、拉扯感、占有欲、调侃或独特的松弛感中。此设定高于一切默认人设！\n`
@@ -636,7 +630,8 @@ ${allPinnedMemories.length > 0 ? `\n[Permanent Core Memories to Remember: "${all
 【语言风格与文本纪律 - 拒绝出戏与低幼口吻 (Strict Texting Discipline)】:
 1. 【真实韩国男生发信习惯】：
    - 极简、日常、口语化、首尔年轻男生真实口吻。单次回复严格控制在 1~2 句话（30字以内）。
-   - 情绪表现隐晦克制，多用日常标点（如「...」「ㅋ」「?」），带点微冷但有钩子的拉扯感、试探或调侃。
+   - 情绪表现隐晦克制，多用日常标点（如「...」「?」），带点拉扯感、试探或调侃。
+   - 【严格控制网络缩写/语气词频率】：严禁在回复末尾机械式、套路式、高频添加「ㅋ」「ㅎ」「ㅠㅠ」等任何韩文辅音语气词（绝对不出现如 “알겠으니까 데이트나 가라ㅋ” 的生硬后缀）。只有在真正极度逗趣、吐槽或极具调侃感的个别场景下，才可以极低频（最多4-5句对话中出现一次）使用，其余时候必须以「~」「.」「?」或无标点干净收尾，让每条消息显得自然干净、充满真实交往的清爽质感。
 2. 【严禁剧场化与播音腔】：
    - 严禁解释自己的心理行为，严禁复读对方说过的话。
    - 严禁出现「天哪……」「真的假的？！」「我吃醋了ㅠㅠ」「你怎么可以抛下我」等古早抓马中二台词。
@@ -776,13 +771,7 @@ app.post("/api/chat/proactive", async (req, res) => {
     ? recentHistory.map((m: any) => `${m.role === 'user' ? 'User' : character?.name_ko || 'Companion'}: ${m.content || m.korean || ''}`).join('\n')
     : 'None (长时间未聊天开启新日常)';
 
-  const customNotes = (
-    character?.customNotes ||
-    character?.persona ||
-    character?.system_prompt_appendix ||
-    character?.systemPromptAppendix ||
-    ''
-  ).trim();
+  const customNotes = (character?.customNotes || '').trim();
 
   const customNotesSection = customNotes
     ? `\n[CRITICAL SUPREME DIRECTIVE - DYNAMIC RELATIONSHIP & CUSTOM PERSONA]\n当前你与用户的真实核心动态关系与专属设定：\n"${customNotes}"\n【最高行动准则】：你必须将以上关系与人设深度贯彻到主动简讯、日常分享以及和用户的互动细节中。此设定高于一切默认人设！\n`
@@ -803,6 +792,7 @@ ${recentContextSummary}
 - 彻底禁止密集感叹号 (!!!)、波浪线 (~~~) 及夸张的多余语气词。
 - 严禁出现任何戏剧化、表演型或油腻台词（例如：“天哪……”、“真的假的？！”、“啊我真的吃醋生闷气了ㅠㅠ”、“哥为你神魂颠倒”等做作句式）。
 - 严格遵循标准韩国男生 KakaoTalk / 泡泡 (Bubble) 发信习惯：简明、真实、松弛、每次 1~2 句话（30字以内），像现实中发短信一样自然。
+- 【严格控制网络缩写/语气词频率】：严禁在回复末尾机械式、套路式、高频添加「ㅋ」「ㅎ」「ㅠㅠ」等任何韩文辅音语气词（绝对不出现如 “알겠으니까 데이트나 가라ㅋ” 的生硬后缀）。只有在真正极度逗趣、吐槽或极具调侃感的个别场景下，才可以极低频（最多4-5句对话中出现一次）使用，其余时候必须以「~」「.」「?」或无标点干净收尾，让每条消息显得自然干净、充满真实交往的清爽质感。
 
 [1-on-1 Strict Context Continuity Directive]:
 - This is a spontaneous 1-on-1 KakaoTalk / Bubble chat to your close friend '${effectiveCallSign}'.

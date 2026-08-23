@@ -337,44 +337,21 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
         .filter(Boolean);
 
       if (apiConfig?.provider === 'gemini' && apiConfig?.apiKey?.trim()) {
-        try {
-          data = await directSendGeminiChat({
-            apiKey: apiConfig.apiKey,
-            model: apiConfig.model,
-            baseURL: apiConfig.baseURL,
-            character: companion,
-            messages: [...contextMessages, userMessage],
-            pinnedMemories,
-            userName: effectiveUserName,
-            userCallSign: effectiveCallSign,
-            userNickname: companion.userNickname,
-            languageMode,
-            imageBase64: imagePayload || undefined,
-            imageMime: undefined,
-            clientTemporal
-          });
-        } catch (directErr: any) {
-          console.warn('Direct Gemini call failed, falling back to /api/chat proxy:', directErr?.message || directErr);
-          const res = await fetch('/api/chat', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              character: companion,
-              messages: [...contextMessages, userMessage],
-              pinnedMemories,
-              userName: effectiveUserName,
-              userCallSign: effectiveCallSign,
-              userNickname: companion.userNickname,
-              languageMode,
-              imageBase64: imagePayload,
-              videoLink: videoData?.link,
-              videoInfo: videoData,
-              clientTemporal,
-              apiConfig,
-            }),
-          });
-          data = await res.json();
-        }
+        data = await directSendGeminiChat({
+          apiKey: apiConfig.apiKey,
+          model: apiConfig.model,
+          baseURL: apiConfig.baseURL,
+          character: companion,
+          messages: [...contextMessages, userMessage],
+          pinnedMemories,
+          userName: effectiveUserName,
+          userCallSign: effectiveCallSign,
+          userNickname: companion.userNickname,
+          languageMode,
+          imageBase64: imagePayload || undefined,
+          imageMime: undefined,
+          clientTemporal
+        });
       } else {
         const res = await fetch('/api/chat', {
           method: 'POST',
@@ -417,7 +394,7 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
               id: `err_${Date.now()}`,
               role: 'assistant',
               content: `⚠️ 请求异常：${data.message || '大模型请求失败，请检查网络或 API 设置'}`,
-              korean: '오류가 발생했습니다. 다시 시도해 주세요.',
+              korean: '오류가 발생했습니다. 다시 시度해 주세요.',
               translation_zh: `⚠️ 请求异常：${data.message || '请检查网络或 API 设置'}`,
               timestamp: Date.now(),
               isRead: true,
@@ -523,39 +500,19 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
         .filter(Boolean);
 
       if (apiConfig?.provider === 'gemini' && apiConfig?.apiKey?.trim()) {
-        try {
-          data = await directSendGeminiChat({
-            apiKey: apiConfig.apiKey,
-            model: apiConfig.model,
-            baseURL: apiConfig.baseURL,
-            character: companion,
-            messages: historyBefore.slice(-10),
-            pinnedMemories,
-            userName: effectiveUserName,
-            userCallSign: effectiveCallSign,
-            userNickname: companion.userNickname,
-            languageMode,
-            clientTemporal
-          });
-        } catch (directErr: any) {
-          console.warn('Direct Gemini call failed during regenerate, falling back to /api/chat:', directErr?.message || directErr);
-          const res = await fetch('/api/chat', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              character: companion,
-              messages: historyBefore.slice(-10),
-              pinnedMemories,
-              userName: effectiveUserName,
-              userCallSign: effectiveCallSign,
-              userNickname: companion.userNickname,
-              languageMode,
-              clientTemporal,
-              apiConfig,
-            }),
-          });
-          data = await res.json();
-        }
+        data = await directSendGeminiChat({
+          apiKey: apiConfig.apiKey,
+          model: apiConfig.model,
+          baseURL: apiConfig.baseURL,
+          character: companion,
+          messages: historyBefore.slice(-10),
+          pinnedMemories,
+          userName: effectiveUserName,
+          userCallSign: effectiveCallSign,
+          userNickname: companion.userNickname,
+          languageMode,
+          clientTemporal
+        });
       } else {
         const res = await fetch('/api/chat', {
           method: 'POST',
@@ -857,7 +814,7 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
 
           const isPureMode = chatMode === 'pure';
           const isRevealed = longPressedMsgId === msg.id;
-          const showLearningUI = !isPureMode || isRevealed;
+          const showLearningUI = chatMode === 'learning';
 
           const isLastAssistant = msg.id === lastAssistantMsgId;
 
@@ -1057,18 +1014,35 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
                                   type="button"
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    const isCurrentlyExpanded = isSectionVisible(msg.id, 'zh') || isSectionVisible(msg.id, 'en');
-                                    setMessageExpandedState((prev) => {
-                                      const msgState = prev[msg.id] || {};
-                                      return {
-                                        ...prev,
-                                        [msg.id]: {
-                                          ...msgState,
-                                          zh: hasZh ? !isCurrentlyExpanded : false,
-                                          en: hasEn ? !isCurrentlyExpanded : false,
-                                        },
-                                      };
-                                    });
+                                    const isEnMode = languageMode === 'en';
+                                    if (isEnMode) {
+                                      const isCurrentlyExpanded = isSectionVisible(msg.id, 'en');
+                                      setMessageExpandedState((prev) => {
+                                        const msgState = prev[msg.id] || {};
+                                        return {
+                                          ...prev,
+                                          [msg.id]: {
+                                            ...msgState,
+                                            en: !isCurrentlyExpanded,
+                                            zh: false,
+                                            showCn: false,
+                                          },
+                                        };
+                                      });
+                                    } else {
+                                      const isCurrentlyExpanded = isSectionVisible(msg.id, 'zh');
+                                      setMessageExpandedState((prev) => {
+                                        const msgState = prev[msg.id] || {};
+                                        return {
+                                          ...prev,
+                                          [msg.id]: {
+                                            ...msgState,
+                                            zh: !isCurrentlyExpanded,
+                                            en: false,
+                                          },
+                                        };
+                                      });
+                                    }
                                   }}
                                   className={`p-1.5 rounded-full transition-all ${
                                     (isSectionVisible(msg.id, 'zh') || isSectionVisible(msg.id, 'en'))
@@ -1120,13 +1094,14 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
                                     e.stopPropagation();
                                     toggleMessageSection(msg.id, 'vocab');
                                   }}
-                                  className={`px-2 py-0.5 rounded-md text-[10px] font-medium transition-all ${
+                                  className={`p-1.5 rounded-full transition-all ${
                                     showVocab
-                                      ? 'bg-amber-100 text-amber-900 font-semibold border border-amber-200/50'
-                                      : 'bg-stone-100 hover:bg-stone-200 text-stone-500'
+                                      ? 'bg-amber-100 text-amber-900 border border-amber-200/50'
+                                      : 'text-stone-400 hover:text-stone-800 hover:bg-stone-100'
                                   }`}
+                                  title="单词解析"
                                 >
-                                  词 {msg.vocabulary?.length}
+                                  <BookOpen className="w-3.5 h-3.5" />
                                 </button>
                               )}
 
@@ -1138,13 +1113,14 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
                                     e.stopPropagation();
                                     toggleMessageSection(msg.id, 'grammar');
                                   }}
-                                  className={`px-2 py-0.5 rounded-md text-[10px] font-medium transition-all ${
+                                  className={`p-1.5 rounded-full transition-all ${
                                     showGrammar
-                                      ? 'bg-emerald-100 text-emerald-900 font-semibold border border-emerald-200/50'
-                                      : 'bg-stone-100 hover:bg-stone-200 text-stone-500'
+                                      ? 'bg-emerald-100 text-emerald-900 border border-emerald-200/50'
+                                      : 'text-stone-400 hover:text-stone-800 hover:bg-stone-100'
                                   }`}
+                                  title="语法解析"
                                 >
-                                  法 {msg.grammar_points?.length}
+                                  <Sliders className="w-3.5 h-3.5" />
                                 </button>
                               )}
 
@@ -1156,13 +1132,14 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
                                     e.stopPropagation();
                                     toggleMessageSection(msg.id, 'tip');
                                   }}
-                                  className={`px-2 py-0.5 rounded-md text-[10px] font-medium transition-all ${
+                                  className={`p-1.5 rounded-full transition-all ${
                                     showTip
-                                      ? 'bg-purple-100 text-purple-900 font-semibold border border-purple-200/50'
-                                      : 'bg-stone-100 hover:bg-stone-200 text-stone-500'
+                                      ? 'bg-purple-100 text-purple-900 border border-purple-200/50'
+                                      : 'text-stone-400 hover:text-stone-800 hover:bg-stone-100'
                                   }`}
+                                  title="口语提示"
                                 >
-                                  提示
+                                  <HelpCircle className="w-3.5 h-3.5" />
                                 </button>
                               )}
 
@@ -1171,15 +1148,45 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
 
                           {/* Expanded Section: Chinese Translation */}
                           {showZh && msg.translation_zh && (
-                            <div className="p-2.5 rounded-xl bg-amber-50/70 text-xs text-amber-950 animate-fadeIn font-sans">
-                              <p className="font-normal">{msg.translation_zh}</p>
+                            <div className="border-t border-black/[0.04] mt-2 pt-2 animate-fadeIn font-sans">
+                              <p className="text-[13px] text-slate-500 font-normal leading-relaxed">{msg.translation_zh}</p>
                             </div>
                           )}
 
                           {/* Expanded Section: English Translation */}
                           {showEn && msg.translation_en && (
-                            <div className="p-2.5 rounded-xl bg-sky-50/70 text-xs text-sky-950 animate-fadeIn font-sans">
-                              <p className="font-normal">{msg.translation_en}</p>
+                            <div className="border-t border-black/[0.04] mt-2 pt-2 animate-fadeIn font-sans">
+                              <p className="text-[13px] text-slate-500 font-normal leading-relaxed">{msg.translation_en}</p>
+                              {msg.translation_zh && (
+                                <div className="mt-1">
+                                  {isSectionVisible(msg.id, 'showCn') ? (
+                                    <div className="mt-1 pt-1 border-t border-dashed border-black/[0.02]">
+                                      <p className="text-[13px] text-slate-500 font-normal leading-relaxed">{msg.translation_zh}</p>
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          toggleMessageSection(msg.id, 'showCn');
+                                        }}
+                                        className="text-[10px] text-slate-400 hover:text-slate-600 transition-colors mt-0.5 cursor-pointer"
+                                      >
+                                        收起中文
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        toggleMessageSection(msg.id, 'showCn');
+                                      }}
+                                      className="text-[10px] text-slate-400 hover:text-slate-600 transition-colors mt-0.5 cursor-pointer"
+                                    >
+                                      展开中文
+                                    </button>
+                                  )}
+                                </div>
+                              )}
                             </div>
                           )}
 

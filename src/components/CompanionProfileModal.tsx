@@ -21,12 +21,9 @@ export const CompanionProfileModal: React.FC<Props> = ({ isOpen, onClose, compan
 
   useEffect(() => {
     if (companion && isOpen) {
-      const initialNotes = companion.customNotes || companion.persona || companion.system_prompt_appendix || '';
       setEditingCompanion({
         ...companion,
-        customNotes: initialNotes,
-        persona: initialNotes,
-        system_prompt_appendix: initialNotes,
+        customNotes: companion.customNotes || '',
       });
     }
   }, [companion, isOpen]);
@@ -60,12 +57,10 @@ export const CompanionProfileModal: React.FC<Props> = ({ isOpen, onClose, compan
 
   const handleSave = () => {
     if (editingCompanion) {
-      const notes = (editingCompanion.customNotes || editingCompanion.persona || editingCompanion.system_prompt_appendix || '').trim();
+      const notes = (editingCompanion.customNotes || '').trim();
       const updated: Companion = {
         ...editingCompanion,
         customNotes: notes,
-        persona: notes,
-        system_prompt_appendix: notes,
         avatar: editingCompanion.customAvatarUrl || editingCompanion.avatar
       };
       onSave(updated);
@@ -73,7 +68,7 @@ export const CompanionProfileModal: React.FC<Props> = ({ isOpen, onClose, compan
     }
   };
 
-  const currentNotes = editingCompanion.customNotes || editingCompanion.persona || editingCompanion.system_prompt_appendix || '';
+  const currentNotes = editingCompanion.customNotes || '';
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-stone-900/80 backdrop-blur-sm sm:p-6 animate-in fade-in duration-200">
@@ -148,13 +143,11 @@ export const CompanionProfileModal: React.FC<Props> = ({ isOpen, onClose, compan
                   const val = e.target.value;
                   setEditingCompanion({
                     ...editingCompanion,
-                    system_prompt_appendix: val,
-                    customNotes: val,
-                    persona: val
+                    customNotes: val
                   });
                 }}
                 className="w-full p-2.5 px-3 text-xs rounded-xl border border-stone-200 bg-stone-50/70 focus:bg-white focus:border-stone-900 focus:ring-1 focus:ring-stone-900 outline-none transition-all resize-none h-20 leading-relaxed"
-                placeholder="Custom context instructions for your buddy (e.g. 我们是青梅竹马 / 说话傲娇但其实很关心我)..."
+                placeholder="输入你与他的专属关系设定（如：大学学长、青梅竹马、秘密交往中等）..."
               />
             </div>
 

@@ -33,23 +33,26 @@ export const CustomPersonaModal: React.FC<CustomPersonaModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center p-4 bg-black/75 backdrop-blur-md sm:p-6 animate-in fade-in duration-300">
+    <div 
+      onClick={onClose}
+      className="fixed inset-0 z-50 flex flex-col items-center justify-center p-4 bg-black/75 backdrop-blur-md sm:p-6 animate-in fade-in duration-300 cursor-pointer"
+    >
       {/* Top Bar */}
-      <div className="w-full max-w-4xl flex items-center justify-between px-2 mb-4 shrink-0">
+      <div 
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-4xl flex items-center justify-between px-2 mb-4 shrink-0 cursor-default"
+      >
         <div>
           <h2 className="text-xl sm:text-2xl font-medium text-white tracking-tight">대화 상대 선택</h2>
           <p className="text-xs text-white/60 mt-0.5">함께 한국어를 연습할 상대를 선택하세요</p>
         </div>
-        <button 
-          onClick={onClose} 
-          className="w-9 h-9 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center justify-center transition-colors cursor-pointer"
-        >
-          <X size={18} />
-        </button>
       </div>
 
       {/* Card Horizontal Scroll Snap Container */}
-      <div className="relative w-full max-w-4xl flex items-center justify-center group my-auto">
+      <div 
+        onClick={(e) => e.stopPropagation()}
+        className="relative w-full max-w-4xl flex items-center justify-center group my-auto cursor-default"
+      >
         {/* Desktop Arrow Buttons */}
         <button
           onClick={() => handleScroll('left')}

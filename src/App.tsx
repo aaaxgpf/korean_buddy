@@ -142,16 +142,17 @@ export default function App() {
             ...override,
             avatar: override.customAvatarUrl || preset.avatar,
             customAvatarUrl: override.customAvatarUrl,
-            customNotes: override.customNotes || override.persona || override.system_prompt_appendix || '',
-            persona: override.persona || override.customNotes || '',
-            system_prompt_appendix: override.system_prompt_appendix || override.customNotes || '',
+            customNotes: override.customNotes || '',
             remark: override.remark || preset.remark || preset.name_ko,
             status_msg: override.status_msg || preset.status_msg,
             tts_pitch: override.tts_pitch !== undefined ? override.tts_pitch : preset.tts_pitch,
             tts_rate: override.tts_rate !== undefined ? override.tts_rate : preset.tts_rate,
           });
         } else {
-          merged.push(preset);
+          merged.push({
+            ...preset,
+            customNotes: '',
+          });
         }
       }
 

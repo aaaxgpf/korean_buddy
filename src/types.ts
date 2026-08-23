@@ -45,6 +45,7 @@ export interface Companion {
   remark?: string;
   customAvatarUrl?: string;
   customScenario?: string;
+  customNotes?: string;
   [key: string]: any;
 }
 

@@ -20,7 +20,7 @@ export const Navbar: React.FC<Props> = ({ activeTab, setActiveTab, hideMobileNav
   return (
     <>
       <header className={`hidden md:block sticky top-0 z-30 ${theme === 'kkt' ? 'bg-[#b2c7d9]/95 border-[#9bbbd4]' : theme === 'wechat' ? 'bg-[#EDEDED]/95 border-[#D5D5D5]' : 'bg-transparent border-transparent'} backdrop-blur-md border-b text-[#2D2D2D] transition-colors`} >
-        <div className="max-w-7xl mx-auto px-6">
+        <div className="w-full px-6">
           <div className="flex items-center justify-between h-20">
             <div className="flex items-center gap-3 cursor-pointer group select-none shrink-0" onClick={() => setActiveTab('chat')}>
               <div className="w-10 h-10 rounded-full bg-stone-900 text-white flex items-center justify-center font-sans text-xl font-bold shadow-sm">
