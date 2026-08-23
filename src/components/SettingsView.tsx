@@ -35,6 +35,7 @@ interface Props {
   userProfile: UserProfile;
   onUpdateUserProfile?: (profile: UserProfile) => void;
   companions?: Companion[];
+  onResetAllData?: () => void;
 }
 
 export const SettingsView: React.FC<Props> = ({ 
@@ -42,12 +43,17 @@ export const SettingsView: React.FC<Props> = ({
   onUpdateSettings, 
   userProfile, 
   onUpdateUserProfile,
-  companions = PRESET_COMPANIONS
+  companions = PRESET_COMPANIONS,
+  onResetAllData
 }) => {
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [activeVoiceTab, setActiveVoiceTab] = useState<string>('sunwoo');
   const [testingAudio, setTestingAudio] = useState<boolean>(false);
   const [savedSuccess, setSavedSuccess] = useState<boolean>(false);
+  
+  // Custom reset confirmation states
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [resetSuccess, setResetSuccess] = useState(false);
 
   // Key Visibility Toggles
   const [showLlmKey, setShowLlmKey] = useState<boolean>(false);
@@ -1026,6 +1032,73 @@ export const SettingsView: React.FC<Props> = ({
           </button>
         </div>
       </div>
+
+      {/* SECTION 7: System Maintenance & Global Reset */}
+      <div className="bg-white p-6 rounded-2xl shadow-xs border border-stone-200 space-y-4">
+        <div className="flex items-center gap-2 text-stone-800 font-bold mb-1">
+          <RefreshCw size={18} className="text-rose-600" />
+          <span>System Reset & Maintenance</span>
+        </div>
+        <p className="text-xs text-stone-500 leading-relaxed">
+          想要重新开始吗？您可以一键恢复默认设置。全局恢复默认将清空所有聊天记录、核心记忆，并将所有系统内置好友重置为初始状态与精美的常量爱豆头像。
+        </p>
+        <div className="flex flex-col sm:flex-row gap-3 pt-1">
+          <button
+            type="button"
+            onClick={() => setShowResetConfirm(true)}
+            className="flex-1 py-2.5 px-4 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer transition-all duration-200"
+          >
+            <RefreshCw size={13} className="text-rose-600" />
+            <span>恢复系统全局默认 (Global Restore Defaults)</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Inline Reset Confirmation Overlay */}
+      {showResetConfirm && (
+        <div className="fixed inset-0 z-[110] bg-black/55 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl border border-stone-200 text-center animate-in fade-in zoom-in-95 duration-200">
+            <div className="w-12 h-12 rounded-full bg-rose-50 text-rose-600 flex items-center justify-center mx-auto mb-3.5">
+              <RefreshCw size={24} className="animate-spin-slow text-rose-600" />
+            </div>
+            <h3 className="font-semibold text-stone-900 text-sm mb-1.5">
+              确认要恢复系统全局默认吗？
+            </h3>
+            <p className="text-xs text-stone-500 mb-5 leading-relaxed px-1">
+              该操作将**彻底删除**所有聊天历史、已设定的专属核心记忆、生词本内容、每日口语进度，并将内置角色的头像恢复为系统真实照片头像。此操作不可撤销。
+            </p>
+            <div className="flex gap-2.5">
+              <button
+                type="button"
+                onClick={() => setShowResetConfirm(false)}
+                className="flex-1 py-2 px-3 rounded-xl border border-stone-200 text-xs font-semibold text-stone-600 hover:bg-stone-50 transition-colors cursor-pointer"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowResetConfirm(false);
+                  onResetAllData?.();
+                  setResetSuccess(true);
+                  setTimeout(() => setResetSuccess(false), 2200);
+                }}
+                className="flex-1 py-2 px-3 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold transition-colors shadow-xs cursor-pointer"
+              >
+                确认恢复默认
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Success Toast for Reset */}
+      {resetSuccess && (
+        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 bg-stone-900/95 text-white text-xs px-4 py-2.5 rounded-full shadow-xl z-[120] animate-in fade-in slide-in-from-bottom-2 pointer-events-none backdrop-blur-xs font-sans flex items-center gap-2">
+          <CheckCircle2 size={14} className="text-emerald-400" />
+          <span>系统已成功恢复至初始默认状态</span>
+        </div>
+      )}
     </div>
   );
 };

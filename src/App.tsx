@@ -72,52 +72,131 @@ export default function App() {
     return () => clearTimeout(timer);
   }, []);
 
-  // Companions State - GUARANTEE all preset companions (including Shotaro, Sungchan, Shinyu) are merged
+  // Companions State - GUARANTEE all preset companions are merged with custom settings and avatars
   const [companions, setCompanions] = useState<Companion[]>(() => {
     try {
-      const saved = localStorage.getItem('korean_companions');
-      if (saved) {
-        const parsed: Companion[] = JSON.parse(saved);
-        const savedMap = new Map(parsed.map(c => [c.id, c]));
-        const merged: Companion[] = [];
-        
-        // Add all preset companions with user-saved customized fields if any
-        for (const preset of PRESET_COMPANIONS) {
-          const userSaved = savedMap.get(preset.id);
-          if (userSaved) {
-            merged.push({
-              ...preset,
-              ...userSaved,
-              group: preset.group,
-              badge: preset.badge,
-              name_kr: preset.name_kr,
-              name_ko: preset.name_ko,
-              name_zh: preset.name_zh,
-              status_msg: preset.status_msg,
-              personality_traits: preset.personality_traits,
-              tone_style: preset.tone_style,
-              system_prompt: preset.system_prompt,
-              birth: preset.birth,
-              role: preset.role,
-              mbti: preset.mbti,
-            });
-            savedMap.delete(preset.id);
-          } else {
-            merged.push(preset);
-          }
+      // 1. Check new separate keys first
+      const savedOverrides = localStorage.getItem('korean_companion_overrides');
+      const savedCustom = localStorage.getItem('korean_custom_companions');
+      
+      let overridesMap = new Map<string, Partial<Companion>>();
+      let customList: Companion[] = [];
+      
+      if (savedOverrides) {
+        try {
+          const parsedOverrides: Record<string, Partial<Companion>> = JSON.parse(savedOverrides);
+          overridesMap = new Map(Object.entries(parsedOverrides));
+        } catch (e) {
+          console.error('Failed to parse overrides', e);
         }
-        
-        // Add custom user-created companions
-        savedMap.forEach(customComp => {
-          merged.push(customComp);
-        });
-        return merged;
       }
+      
+      if (savedCustom) {
+        try {
+          customList = JSON.parse(savedCustom);
+        } catch (e) {
+          console.error('Failed to parse custom companions', e);
+        }
+      }
+
+      // Check legacy key for migration
+      const legacySaved = localStorage.getItem('korean_companions');
+      if (legacySaved && !savedOverrides && !savedCustom) {
+        try {
+          const parsedLegacy: Companion[] = JSON.parse(legacySaved);
+          for (const c of parsedLegacy) {
+            const isPreset = PRESET_COMPANIONS.some(p => p.id === c.id);
+            if (isPreset) {
+              const base = PRESET_COMPANIONS.find(p => p.id === c.id)!;
+              const override: Partial<Companion> = {};
+              if (c.customAvatarUrl && c.customAvatarUrl !== base.avatar) override.customAvatarUrl = c.customAvatarUrl;
+              if (c.customNotes && c.customNotes !== base.system_prompt) override.customNotes = c.customNotes;
+              if (c.persona && c.persona !== base.persona) override.persona = c.persona;
+              if (c.system_prompt_appendix && c.system_prompt_appendix !== base.system_prompt_appendix) override.system_prompt_appendix = c.system_prompt_appendix;
+              if (c.remark && c.remark !== base.remark) override.remark = c.remark;
+              if (c.status_msg && c.status_msg !== base.status_msg) override.status_msg = c.status_msg;
+              if (c.tts_pitch !== undefined && c.tts_pitch !== base.tts_pitch) override.tts_pitch = c.tts_pitch;
+              if (c.tts_rate !== undefined && c.tts_rate !== base.tts_rate) override.tts_rate = c.tts_rate;
+              
+              if (Object.keys(override).length > 0) {
+                overridesMap.set(c.id, override);
+              }
+            } else {
+              customList.push(c);
+            }
+          }
+          // Remove legacy key after migration to free up space instantly
+          localStorage.removeItem('korean_companions');
+        } catch (e) {
+          console.error('Failed to migrate legacy companions', e);
+        }
+      }
+
+      // Build initial merged companions list
+      const merged: Companion[] = [];
+      for (const preset of PRESET_COMPANIONS) {
+        const override = overridesMap.get(preset.id);
+        if (override) {
+          merged.push({
+            ...preset,
+            ...override,
+            avatar: override.customAvatarUrl || preset.avatar,
+            customAvatarUrl: override.customAvatarUrl,
+            customNotes: override.customNotes || override.persona || override.system_prompt_appendix || '',
+            persona: override.persona || override.customNotes || '',
+            system_prompt_appendix: override.system_prompt_appendix || override.customNotes || '',
+            remark: override.remark || preset.remark || preset.name_ko,
+            status_msg: override.status_msg || preset.status_msg,
+            tts_pitch: override.tts_pitch !== undefined ? override.tts_pitch : preset.tts_pitch,
+            tts_rate: override.tts_rate !== undefined ? override.tts_rate : preset.tts_rate,
+          });
+        } else {
+          merged.push(preset);
+        }
+      }
+
+      // Add custom companions
+      merged.push(...customList);
+      return merged;
     } catch (e) {
-      console.error('Failed to load companions from localStorage', e);
+      console.error('Failed to initialize companions state', e);
+      return PRESET_COMPANIONS;
     }
-    return PRESET_COMPANIONS;
   });
+
+  // Sync companions to localStorage using high-performance split keys (avoids quota error entirely)
+  useEffect(() => {
+    try {
+      const overrides: Record<string, Partial<Companion>> = {};
+      const custom: Companion[] = [];
+      
+      for (const c of companions) {
+        const base = PRESET_COMPANIONS.find(p => p.id === c.id);
+        if (base) {
+          const override: Partial<Companion> = {};
+          if (c.customAvatarUrl) override.customAvatarUrl = c.customAvatarUrl;
+          if (c.customNotes) override.customNotes = c.customNotes;
+          if (c.persona) override.persona = c.persona;
+          if (c.system_prompt_appendix) override.system_prompt_appendix = c.system_prompt_appendix;
+          if (c.remark && c.remark !== base.remark && c.remark !== base.name_ko) override.remark = c.remark;
+          if (c.status_msg && c.status_msg !== base.status_msg) override.status_msg = c.status_msg;
+          if (c.tts_pitch !== undefined && c.tts_pitch !== base.tts_pitch) override.tts_pitch = c.tts_pitch;
+          if (c.tts_rate !== undefined && c.tts_rate !== base.tts_rate) override.tts_rate = c.tts_rate;
+          
+          if (Object.keys(override).length > 0) {
+            overrides[c.id] = override;
+          }
+        } else {
+          custom.push(c);
+        }
+      }
+      
+      localStorage.setItem('korean_companion_overrides', JSON.stringify(overrides));
+      localStorage.setItem('korean_custom_companions', JSON.stringify(custom));
+    } catch (e) {
+      console.error('Failed to sync companions overrides to localStorage', e);
+    }
+  }, [companions]);
 
   const [selectedCompanionId, setSelectedCompanionId] = useState<string>(() => {
     return companions[0]?.id || 'hyunjae';
@@ -239,11 +318,6 @@ export default function App() {
     }
   });
 
-  // Persist companions
-  useEffect(() => {
-    localStorage.setItem('korean_companions', JSON.stringify(companions));
-  }, [companions]);
-
   // Persist sparks
   useEffect(() => {
     localStorage.setItem('korean_companion_sparks', JSON.stringify(sparksMap));
@@ -335,11 +409,7 @@ export default function App() {
       }
       return next;
     });
-    // Reset persona state to preset defaults if applicable
-    const preset = PRESET_COMPANIONS.find(c => c.id === companionId);
-    if (preset) {
-      setCompanions((prev) => prev.map(c => c.id === companionId ? { ...preset } : c));
-    }
+    // NOTE: Strictly retain character avatar, custom notes, remark, and persona settings when clearing chat history.
   };
 
   // Handle Proactive Messages for idle or inactive companions with realistic delays and dynamic LLM / time awareness
@@ -488,13 +558,7 @@ export default function App() {
   };
 
   const handleCreateCompanion = (newComp: Companion, voiceSlot: VoiceSlotConfig) => {
-    setCompanions((prev) => {
-      const updated = [...prev, newComp];
-      try {
-        localStorage.setItem('korean_companions', JSON.stringify(updated));
-      } catch (e) {}
-      return updated;
-    });
+    setCompanions((prev) => [...prev, newComp]);
 
     try {
       const savedMM = localStorage.getItem('minimax_config');
@@ -536,6 +600,32 @@ export default function App() {
     if (selectedCompanionId === id) {
       setSelectedCompanionId(PRESET_COMPANIONS[0].id);
     }
+  };
+
+  const handleResetAllData = () => {
+    // 1. Clear overrides and custom companions from localStorage
+    localStorage.removeItem('korean_companion_overrides');
+    localStorage.removeItem('korean_custom_companions');
+    localStorage.removeItem('korean_companions'); // clear legacy key
+    
+    // 2. Clear chats
+    localStorage.removeItem('korean_companion_chats');
+    setCompanionChatMap({});
+    
+    // 3. Reset companions state
+    setCompanions(PRESET_COMPANIONS);
+    setSelectedCompanionId(PRESET_COMPANIONS[0].id);
+    
+    // 4. Reset streak, vocab, grammar IDs, and saved dialogues to default
+    localStorage.removeItem('korean_vocabulary');
+    localStorage.removeItem('korean_saved_dialogues');
+    localStorage.removeItem('korean_saved_grammar_ids');
+    localStorage.removeItem('korean_study_streak');
+    
+    setVocabulary(INITIAL_VOCABULARY);
+    setSavedDialogues([]);
+    setSavedGrammarIds(new Set(['g_1', 'g_3']));
+    setStudyStreak(5);
   };
 
   // Handlers for Vocab
@@ -732,9 +822,9 @@ export default function App() {
                              </div>
                            </div>
 
-                           {/* iOS Inset Divider: Start after avatar at text edge, don't show on active card or last item */}
+                           {/* iOS Inset Divider: Start after avatar at text edge, subtle 1px border */}
                            {!isLast && !isSelected && !isNextSelected && (
-                             <div className="ml-[72px] border-b border-stone-200/60 dark:border-stone-800/60 my-0" />
+                             <div className="ml-[72px] border-b border-black/[0.04] dark:border-white/[0.04] my-0" />
                            )}
                          </React.Fragment>
                        );
@@ -821,6 +911,7 @@ export default function App() {
             onUpdateSettings={setSettings}
             userProfile={userProfile}
             companions={companions}
+            onResetAllData={handleResetAllData}
           />
         )}
       </main>

@@ -57,25 +57,25 @@ export const Navbar: React.FC<Props> = ({ activeTab, setActiveTab, hideMobileNav
       </header>
 
       {/* Mobile Navigation */}
-      {!hideMobileNav && <nav className={`md:hidden fixed bottom-0 w-full ${theme === 'kkt' ? 'bg-[#b2c7d9]/95 border-[#9bbbd4]' : theme === 'wechat' ? 'bg-[#EDEDED]/95 border-[#D5D5D5]' : 'bg-transparent border-transparent'} backdrop-blur-md border-t px-6 py-2 pb-safe flex justify-between items-center z-40`}>
-        {tabs.map((tab) => {
-          const isActive = activeTab === tab.id;
-          return (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`flex flex-col items-center gap-1 p-2 w-16 transition-all duration-200 ${
-                isActive ? 'text-[#3E2723]' : 'text-stone-400 hover:text-stone-600'
-              }`}
-            >
-              <div className={`relative transition-transform duration-200 ${isActive ? 'scale-110' : 'scale-100'}`}>
-                <tab.icon size={24} strokeWidth={isActive ? 2.5 : 2} />
-              </div>
-              <span className={`text-[10px] ${isActive ? 'font-bold' : 'font-medium'}`}>{tab.label}</span>
-            </button>
-          );
-        })}
-      </nav>}
+      {!hideMobileNav && (
+        <nav className="md:hidden fixed bottom-0 w-full h-14 backdrop-blur-md bg-white/85 border-t border-slate-100 px-6 py-1 pb-safe flex justify-around items-center z-40">
+          {tabs.map((tab) => {
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`flex flex-col items-center justify-center gap-0.5 py-1 px-3 rounded-xl transition-all duration-150 cursor-pointer ${
+                  isActive ? 'text-stone-900 font-semibold' : 'text-stone-400 hover:text-stone-600 font-medium'
+                }`}
+              >
+                <tab.icon className="w-5 h-5 shrink-0" strokeWidth={isActive ? 2.2 : 1.8} />
+                <span className="text-[11px] tracking-tight leading-tight">{tab.label}</span>
+              </button>
+            );
+          })}
+        </nav>
+      )}
     </>
   );
 };

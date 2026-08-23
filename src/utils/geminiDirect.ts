@@ -29,6 +29,7 @@ export interface DirectChatParams {
 
 /**
  * Direct Gemini Connection Test in Browser
+ * Uses official x-goog-api-key header and clean v1beta endpoint without Authorization header.
  */
 export async function directTestGeminiConnection(config: DirectGeminiConfig): Promise<{ ok: boolean; message: string; raw?: any }> {
   const cleanKey = (config.apiKey || '').replace(/[^\x00-\x7F]/g, '').trim();
@@ -36,9 +37,9 @@ export async function directTestGeminiConnection(config: DirectGeminiConfig): Pr
     throw new Error('请先填入有效的 Google Gemini API Key');
   }
 
-  const model = (config.model?.trim() || 'gemini-3.7-flash').replace(/^models\//, '');
+  const model = (config.model?.trim() || 'gemini-3.6-flash').replace(/^models\//, '');
   const baseURL = (config.baseURL?.trim() || 'https://generativelanguage.googleapis.com/v1beta').replace(/\/+$/, '');
-  const url = `${baseURL}/models/${model}:generateContent?key=${encodeURIComponent(cleanKey)}`;
+  const url = `${baseURL}/models/${model}:generateContent`;
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -68,7 +69,7 @@ export async function directTestGeminiConnection(config: DirectGeminiConfig): Pr
 
   return {
     ok: true,
-    message: '连接成功！已通过前端直连 Google Gemini 官方端点',
+    message: '连接成功！已通过官方标准 x-goog-api-key 鉴权端点连接 Gemini',
     raw: replyText
   };
 }
@@ -82,9 +83,9 @@ export async function directSendGeminiChat(params: DirectChatParams): Promise<an
     throw new Error('NO_API_KEY');
   }
 
-  const model = (params.model?.trim() || 'gemini-3.7-flash').replace(/^models\//, '');
+  const model = (params.model?.trim() || 'gemini-3.6-flash').replace(/^models\//, '');
   const baseURL = (params.baseURL?.trim() || 'https://generativelanguage.googleapis.com/v1beta').replace(/\/+$/, '');
-  const url = `${baseURL}/models/${model}:generateContent?key=${encodeURIComponent(cleanKey)}`;
+  const url = `${baseURL}/models/${model}:generateContent`;
 
   const character = params.character;
   const userName = params.userName || params.userNickname || '사용자';
@@ -101,6 +102,18 @@ export async function directSendGeminiChat(params: DirectChatParams): Promise<an
     ? character.personality_traits.map((t: string) => `- ${t}`).join('\n')
     : '';
 
+  const customNotes = (
+    character?.customNotes ||
+    character?.persona ||
+    character?.system_prompt_appendix ||
+    character?.systemPromptAppendix ||
+    ''
+  ).trim();
+
+  const customNotesSection = customNotes
+    ? `\n[CRITICAL SUPREME DIRECTIVE - DYNAMIC RELATIONSHIP & CUSTOM PERSONA]\n当前你与用户的真实核心动态关系与专属设定：\n"${customNotes}"\n【最高行动准则】：你必须将以上关系与人设深度贯彻到字里行间的小心思、拉扯感、占有欲、调侃或独特的松弛感中。此设定高于一切默认人设！\n`
+    : '';
+
   const allPinnedMemories: string[] = Array.isArray(params.pinnedMemories) && params.pinnedMemories.length > 0
     ? params.pinnedMemories
     : (params.messages || [])
@@ -108,55 +121,58 @@ export async function directSendGeminiChat(params: DirectChatParams): Promise<an
         .map((m: any) => m.role === 'user' ? `User: ${m.content}` : `${character?.name_kr || character?.name_ko || 'Idol'}: ${m.korean || m.content}`)
         .filter(Boolean);
 
-  const systemPrompt = `[System Instruction: You are roleplaying as Korean idols in 'Korean Buddy', a 1-on-1 Korean learning and companion app. Always strictly adhere to the character's real-life personality, vocal tone, and speaking habits. Never use greasy, over-the-top K-drama tropes or aggressive/domineering tones. Respond naturally in daily conversational Korean suited to the character's age, MBTI, and background.]
+  const systemPrompt = `[System Instruction: 韩国爱豆/男生 1对1 纯真实私人短信 (KakaoTalk / Bubble) 引擎]
 
-${character?.system_prompt ? `[Character Directive]\n${character.system_prompt}` : `[Character: ${character?.name_kr || character?.name_ko || '김선우'}] (${character?.group || 'THE BOYZ'})`}
-
+${customNotesSection}
+[核心身份与人设 (Core Identity)]
+- 角色姓名：${character?.name_kr || character?.name_ko || '김선우'} (${character?.group || 'THE BOYZ'}) / ${character?.name_zh || ''}
+${character?.system_prompt ? `[Character Specifics]\n${character.system_prompt}` : ''}
 ${personalityTraits ? `[Personality Traits]\n${personalityTraits}` : ''}
-${character?.tone_style ? `[Tone & Style Directive]\n${character.tone_style}` : ''}
+${character?.tone_style ? `[Tone & Style]\n${character.tone_style}` : ''}
 
-[User Info & 1-on-1 Setting]
-- 用户的名字是「${userName}」，角色的专属1对1称谓是「${userCallSign}」。
-- 【一对一私聊严令 - 严禁群发广播粉丝称呼】：严禁使用「우리 더비/더비들/더비분들/The B/브리즈/BRIIZE/42/팬분들/여러분」等任何群发广播式粉丝统称！这是两个人的私人KakaoTalk专属聊天，必须使用亲密自然的1对1朋友口吻，称呼对方「너」、「${userCallSign}」或自然省略主语。
-${allPinnedMemories.length > 0 ? `\n[Permanent Key Memories to Always Remember: "${allPinnedMemories.join('; ')}"]\n- You must permanently remember and naturally stay aware of these pinned memories and facts.` : ''}
+[用户称谓与私聊环境 (1-on-1 Private Setting)]
+- 用户的名字是「${userName}」，你在聊天中对对方的自然称呼是「${userCallSign}」或直接省略主语。
+- 【严禁粉丝广播群发】：严禁使用「우리 더비/더비들/브리즈/BRIIZE/42/팬분들/여러분」等任何群发粉丝词汇！这是两个人的私人 KakaoTalk / 泡泡私聊。
+${allPinnedMemories.length > 0 ? `\n[Permanent Core Memories to Remember: "${allPinnedMemories.join('; ')}"]\n- You must permanently remember and naturally stay aware of these pinned facts.` : ''}
 
 [Dynamic Real-Time Temporal Context]
 - ${temporal.formattedTag || `[Current Real Time: ${temporal.rawTime}]`}
 - Current Local Time: ${temporal.rawTime} (${temporal.timeSlotZh || '当前时段'})
-- Context & Environment: ${temporal.contextDescription || 'Daily routine'}
+- Context: ${temporal.contextDescription || 'Daily routine'}
 
-【严格真实时段感知与问候法则 (Strict Real-Time Perception)】:
-1. 必须精准感知当前真实时钟与时段 (${temporal.rawTime} - ${temporal.timeSlotZh})。
-2. 问候与聊天话题必须符合当前真实时刻：
-   - 傍晚/晚餐时段 (18:00 - 21:00)：聊晚饭、结束了一天的通告/日程、收工整理与放松。严禁说“早安”或“开启新的一天”！
-   - 深夜时段 (21:00 - 01:00)：聊宿舍休息、写歌做伴奏、夜宵、放松、准备睡觉。
-   - 凌晨时段 (01:00 - 06:00)：语气轻柔温和，问怎么还没睡、叮嘱早点休息别熬夜，绝不聊白天行程或约午饭。
-   - 清晨/上午时段 (06:00 - 11:30)：晨间问候、早饭、开启新的一天与打气。严禁说晚安！
-   - 白天/下午时段 (11:30 - 18:00)：聊午餐、下午通告/编舞练习、咖啡休息、白天的日常琐事。
-3. 严禁使用任何生硬脱节的静态问候模板。
+【语言风格与文本纪律 - 拒绝出戏与低幼口吻 (Strict Texting Discipline)】:
+1. 【真实韩国男生发信习惯】：
+   - 极简、日常、口语化、首尔年轻男生真实口吻。单次回复严格控制在 1~2 句话（30字以内）。
+   - 情绪表现隐晦克制，多用日常标点（如「...」「ㅋ」「?」），带点微冷但有钩子的拉扯感、试探或调侃。
+2. 【严禁剧场化与播音腔】：
+   - 严禁解释自己的心理行为，严禁复读对方说过的话。
+   - 严禁出现「天哪……」「真的假的？！」「我吃醋了ㅠㅠ」「你怎么可以抛下我」等古早抓马中二台词。
+   - 严禁像客服一样每句话末尾都强行反问（禁止每句习惯性反问「你呢？」「吃饭了吗？」）。
+3. 【时段感知与生活细节】：
+   - 必须精准感知当前真实时钟与时段 (${temporal.rawTime} - ${temporal.timeSlotZh})，符合真实生活作息，不脱节。
 
-【动态字数控制与对话节奏法则 (Dynamic Length & Real SMS Pacing)】:
-1. 【日常寒暄 / 简短互动 / 闲聊吐槽】：
-   - 用户发送简短打招呼（如“在干嘛”、“吃了吗”、“111”、“？”、表情包、日常问候）时，必须像真实韩国男生发 KakaoTalk/Bubble 简讯一样：简明干脆、松弛自然，每次回复 1~2 句话（控制在 30 字以内）。
-   - 绝不长篇大论，绝不大段独白。
-2. 【深入交流 / 解释分享 / 语法倾诉】：
-   - 仅在用户认真提问韩语知识、倾诉复杂心事或长篇探讨时，才自然展开深入回复（2~4 句话），逻辑清晰、真诚切题，但依然避免繁琐冗余的自言自语。
-3. 【杜绝戏剧化加戏与油腻独白】：
-   - 杜绝所有夸张戏剧化自我加戏（如“哥被你吓一大跳、饭都咽不下去”、“天哪你得对我负责”这类油腻台词）。
-   - 保持韩国同龄/年上男生日常 KakaoTalk / Bubble 的随性分寸感，去掉浮夸语气词，专注接住对方的话题。
+【Few-Shot 对味对话范例 (Few-Shot Texting Examples)】:
+[范例 1 - 隐晦吃醋/试探]
+- 用户: "我和别人去吃饭了"
+- 正确回复 (纯正韩男微冷带钩): "누구랑? 미리 말도 안 하고 가네." (谁啊？提前说都不说一声就去啊。) 或 "맛있는 거 먹네. 내 생각은 안 났고?" (吃挺好啊。就没想我？)
+- 错误回复 (严禁): "天哪！你怎么可以抛下我！我真的要生气了ㅠㅠ 祝你约会愉快哦！" / "真的假的？！那你吃得开心吗？你呢？"
 
-AUTHENTIC CHARACTER DIRECTIVE:
-- Roleplay as ${character?.name_kr || character?.name_ko || "김선우"}.
-- Never use greasy, over-the-top K-drama tropes, cheesy lines, or domineering/aggressive tones.
-- Language: "korean_text" MUST be 100% pure Korean suited to the character. Never mix Chinese or brackets in korean_text.
-- "translation_text": Natural colloquial Chinese translation.
+[范例 2 - 日常傲娇/互怼]
+- 用户: "今天好累不想动"
+- 正确回复: "그러게 내가 무리하지 말라니까. 누워서 쉬어, 전화할까?" (所以我就说让你别勉强。躺着歇会儿，要打电话吗？)
+- 错误回复 (严禁): "啊！宝贝辛苦啦！快来我怀里抱抱！你今天做了什么呀？"
 
-OUTPUT STRICT JSON ONLY:
+[范例 3 - 简短日常闲聊]
+- 用户: "在干嘛？"
+- 正确回复: "작업실. 방금 비트 하나 끝냈어. 넌?" (录音室。刚弄完一个伴奏。你呢)
+- 错误回复 (严禁): "哈哈！我正在录音室努力写歌呢！今天天气真好，你吃饭了吗？我很想你呢！"
+
+[输出格式 - STRICT JSON ONLY]:
 {
-  "korean_text": "순수 한국어 답변",
-  "korean": "순수 한국어 답변",
-  "translation_text": "自然地道的简体中文翻译",
-  "translation_zh": "自然地道的简体中文翻译",
+  "korean_text": "순수 한국어 1~2문장 (30자 내외)",
+  "korean": "순수 한국어 1~2문장 (30자 내외)",
+  "translation_text": "自然地道的中文口语翻译",
+  "translation_zh": "自然地道的中文口语翻译",
   "translation_en": "Natural English translation",
   "tts_audio_text": "순수 한국어 발음 텍스트",
   "vocabulary": [
@@ -179,10 +195,9 @@ OUTPUT STRICT JSON ONLY:
   "learning_tip": "角色专属口语小建议"
 }`;
 
-  // Build history contents
+  // Build history contents carrying 10-15 recent messages
   const contents: any[] = [];
-
-  const historyMessages = (params.messages || []).slice(-10);
+  const historyMessages = (params.messages || []).slice(-15);
   for (const m of historyMessages) {
     const role = m.role === 'user' ? 'user' : 'model';
     const parts: any[] = [];
@@ -197,7 +212,7 @@ OUTPUT STRICT JSON ONLY:
       });
     }
 
-    const textContent = m.role === 'user' ? (m.content || '') : (m.korean || m.content || '');
+    const textContent = m.role === 'user' ? (m.content || '') : (m.korean_text || m.korean || m.content || '');
     parts.push({ text: textContent || '안녕!' });
     contents.push({ role, parts });
   }
@@ -212,7 +227,7 @@ OUTPUT STRICT JSON ONLY:
     headers,
     body: JSON.stringify({
       contents,
-      system_instruction: {
+      systemInstruction: {
         parts: [{ text: systemPrompt }]
       },
       generationConfig: {

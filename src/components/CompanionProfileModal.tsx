@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Camera } from 'lucide-react';
+import { X, Camera, Crop } from 'lucide-react';
 import { Companion } from '../types';
 import { CompanionAvatar } from './CompanionAvatar';
+import { AvatarCropModal } from './AvatarCropModal';
 
 interface Props {
   isOpen: boolean;
@@ -14,9 +15,19 @@ export const CompanionProfileModal: React.FC<Props> = ({ isOpen, onClose, compan
   const [editingCompanion, setEditingCompanion] = useState<Companion | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Avatar crop states
+  const [isCropOpen, setIsCropOpen] = useState(false);
+  const [rawUploadSrc, setRawUploadSrc] = useState<string | null>(null);
+
   useEffect(() => {
     if (companion && isOpen) {
-      setEditingCompanion({ ...companion });
+      const initialNotes = companion.customNotes || companion.persona || companion.system_prompt_appendix || '';
+      setEditingCompanion({
+        ...companion,
+        customNotes: initialNotes,
+        persona: initialNotes,
+        system_prompt_appendix: initialNotes,
+      });
     }
   }, [companion, isOpen]);
 
@@ -24,31 +35,52 @@ export const CompanionProfileModal: React.FC<Props> = ({ isOpen, onClose, compan
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file && editingCompanion) {
+    if (file) {
       const reader = new FileReader();
       reader.onloadend = () => {
-        setEditingCompanion({
-          ...editingCompanion,
-          customAvatarUrl: reader.result as string
-        });
+        setRawUploadSrc(reader.result as string);
+        setIsCropOpen(true);
       };
       reader.readAsDataURL(file);
+      e.target.value = '';
     }
+  };
+
+  const handleCropComplete = (croppedBase64: string) => {
+    if (editingCompanion) {
+      setEditingCompanion({
+        ...editingCompanion,
+        customAvatarUrl: croppedBase64,
+        avatar: croppedBase64
+      });
+    }
+    setIsCropOpen(false);
+    setRawUploadSrc(null);
   };
 
   const handleSave = () => {
     if (editingCompanion) {
-      onSave(editingCompanion);
+      const notes = (editingCompanion.customNotes || editingCompanion.persona || editingCompanion.system_prompt_appendix || '').trim();
+      const updated: Companion = {
+        ...editingCompanion,
+        customNotes: notes,
+        persona: notes,
+        system_prompt_appendix: notes,
+        avatar: editingCompanion.customAvatarUrl || editingCompanion.avatar
+      };
+      onSave(updated);
       onClose();
     }
   };
+
+  const currentNotes = editingCompanion.customNotes || editingCompanion.persona || editingCompanion.system_prompt_appendix || '';
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-stone-900/80 backdrop-blur-sm sm:p-6 animate-in fade-in duration-200">
       <div className="bg-white rounded-3xl w-full max-w-md overflow-hidden flex flex-col max-h-full shadow-2xl">
         <div className="p-4 border-b border-stone-100 flex items-center justify-between sticky top-0 bg-white/80 backdrop-blur-md z-10">
           <h2 className="text-lg font-semibold text-stone-900">Buddy Profile</h2>
-          <button onClick={onClose} className="p-2 text-stone-400 hover:bg-stone-100 rounded-full transition-colors">
+          <button onClick={onClose} className="p-2 text-stone-400 hover:bg-stone-100 rounded-full transition-colors cursor-pointer">
             <X size={20} />
           </button>
         </div>
@@ -69,6 +101,21 @@ export const CompanionProfileModal: React.FC<Props> = ({ isOpen, onClose, compan
                 <span className="text-[10px] font-medium">Upload</span>
               </div>
             </div>
+
+            {editingCompanion.customAvatarUrl && (
+              <button
+                type="button"
+                onClick={() => {
+                  setRawUploadSrc(editingCompanion.customAvatarUrl!);
+                  setIsCropOpen(true);
+                }}
+                className="text-xs text-stone-600 hover:text-stone-900 bg-stone-100 hover:bg-stone-200 px-3 py-1 rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer"
+              >
+                <Crop size={12} />
+                <span>裁剪头像</span>
+              </button>
+            )}
+
             <input type="file" ref={fileInputRef} onChange={handleImageUpload} accept="image/*" className="hidden" />
           </div>
           <div className="space-y-4">
@@ -96,10 +143,18 @@ export const CompanionProfileModal: React.FC<Props> = ({ isOpen, onClose, compan
             <div>
               <label className="block text-xs font-semibold text-stone-700 mb-1.5">Persona & Custom Notes (专属人设与个性化提示)</label>
               <textarea 
-                value={editingCompanion.system_prompt_appendix || ''}
-                onChange={e => setEditingCompanion({...editingCompanion, system_prompt_appendix: e.target.value})}
+                value={currentNotes}
+                onChange={e => {
+                  const val = e.target.value;
+                  setEditingCompanion({
+                    ...editingCompanion,
+                    system_prompt_appendix: val,
+                    customNotes: val,
+                    persona: val
+                  });
+                }}
                 className="w-full p-2.5 px-3 text-xs rounded-xl border border-stone-200 bg-stone-50/70 focus:bg-white focus:border-stone-900 focus:ring-1 focus:ring-stone-900 outline-none transition-all resize-none h-20 leading-relaxed"
-                placeholder="Custom context instructions for your buddy..."
+                placeholder="Custom context instructions for your buddy (e.g. 我们是青梅竹马 / 说话傲娇但其实很关心我)..."
               />
             </div>
 
@@ -143,6 +198,18 @@ export const CompanionProfileModal: React.FC<Props> = ({ isOpen, onClose, compan
            </button>
         </div>
       </div>
+
+      {/* Avatar Crop Modal */}
+      <AvatarCropModal
+        isOpen={isCropOpen}
+        imageSrc={rawUploadSrc}
+        onClose={() => {
+          setIsCropOpen(false);
+          setRawUploadSrc(null);
+        }}
+        onCropComplete={handleCropComplete}
+        aspectRatio={1}
+      />
     </div>
   );
 };

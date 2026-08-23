@@ -161,13 +161,21 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
 
   const messages = companionMessages || [];
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  const scrollToBottom = (behavior: ScrollBehavior = 'auto') => {
+    messagesEndRef.current?.scrollIntoView({ behavior });
   };
 
+  // Instant scroll to bottom when switching companion or when message count changes
   useEffect(() => {
-    scrollToBottom();
-  }, [messages, isLoading]);
+    scrollToBottom('auto');
+  }, [companion.id, messages.length]);
+
+  // Smooth scroll when loading or sending
+  useEffect(() => {
+    if (isLoading) {
+      scrollToBottom('smooth');
+    }
+  }, [isLoading]);
 
   // Video Link Extraction Helper
   const extractVideoLink = (text: string) => {
@@ -665,7 +673,13 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
   const userAvatarSrc = userProfile?.avatarUrl || localStorage.getItem('user_profile_avatar') || '';
 
   return (
-    <div className={`flex flex-col h-full w-full max-w-3xl mx-auto relative overflow-hidden ${theme === 'kkt' ? 'bg-[#b2c7d9] shadow-lg border-x border-[#9bbbd4]' : 'bg-transparent'}`}>
+    <div className={`flex flex-col h-full w-full max-w-3xl mx-auto relative overflow-hidden ${
+      theme === 'kkt' 
+        ? 'bg-[#b2c7d9] shadow-lg border-x border-[#9bbbd4]' 
+        : theme === 'wechat' 
+          ? 'bg-[#EDEDED]' 
+          : 'bg-[#f5f5f7] rounded-2xl sm:rounded-3xl border border-stone-200/50'
+    }`}>
       
       {/* TOP HEADER */}
       <div className={`${theme === 'kkt' ? 'bg-[#b2c7d9]/95 border-b border-[#9bbbd4]' : 'bg-white/90 border-b border-stone-200/60'} backdrop-blur-md px-3.5 sm:px-4 py-2.5 sm:py-3 flex items-center justify-between z-10 shrink-0`}>
@@ -792,7 +806,7 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
 
       {/* CHAT MESSAGES SCROLL CONTAINER */}
       <div 
-        className={`flex-1 overflow-y-auto space-y-3 p-3 sm:p-4 ${theme === 'kkt' ? 'bg-[#b2c7d9]' : theme === 'wechat' ? 'bg-[#EDEDED]' : 'rounded-2xl sm:rounded-3xl bg-slate-100/60'}`}
+        className="flex-1 overflow-y-auto space-y-3 p-3 sm:p-4 bg-transparent"
       >
 
         {messages.map((msg, index) => {
@@ -915,12 +929,6 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
                 {/* COMPANION MESSAGE WRAPPER (Timestamp on outer right) */}
                 {!isUser && (
                   <div className="flex flex-col items-start max-w-[85%] md:max-w-[70%]">
-                    
-                    {/* Companion Name Label (Strict Pure Korean Name) */}
-                    <div className="flex items-center gap-1.5 mb-1 px-1 text-xs font-medium text-stone-600 font-sans">
-                      <span>{companion.name_ko || companion.name_kr || companion.remark || '친구'}</span>
-                    </div>
-
                     <div className="flex items-end gap-1.5">
                       {/* IDOL SPEECH BUBBLE */}
                       <div
@@ -1259,23 +1267,23 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
         <div ref={messagesEndRef} />
       </div>
 
-      {/* CHAT INPUT BAR */}
-      <div className="bg-white/95 backdrop-blur-md text-stone-800 rounded-2xl p-2 sm:p-2.5 mt-2 shadow-xs shrink-0 border-0">
+      {/* CHAT INPUT BAR (Floating White Capsule on Transparent Background) */}
+      <div className="bg-transparent px-3 py-2.5 sm:px-4 sm:py-3 shrink-0 border-0">
         
         {/* Selected Image Preview Thumbnail */}
         {selectedImage && (
           <div className="mb-2 relative inline-block">
-            <img src={selectedImage} alt="Selected preview" className="w-16 h-16 object-cover rounded-xl border border-stone-200" />
+            <img src={selectedImage} alt="Selected preview" className="w-16 h-16 object-cover rounded-xl border border-stone-200 shadow-xs" />
             <button
               onClick={() => setSelectedImage(null)}
-              className="absolute -top-1.5 -right-1.5 p-1 rounded-full bg-black/70 text-white hover:bg-black"
+              className="absolute -top-1.5 -right-1.5 p-1 rounded-full bg-black/70 text-white hover:bg-black transition-colors"
             >
               <X className="w-3 h-3" />
             </button>
           </div>
         )}
 
-        <form onSubmit={handleSendMessage} className="flex items-center gap-1.5 sm:gap-2">
+        <form onSubmit={handleSendMessage} className="bg-white shadow-sm rounded-2xl p-1.5 sm:p-2 flex items-center gap-1.5 sm:gap-2 border border-black/[0.04]">
           
           {/* Photo upload trigger */}
           <input
@@ -1288,26 +1296,26 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="p-2 sm:p-2.5 rounded-xl hover:bg-stone-100 text-stone-500 hover:text-stone-700 transition-colors shrink-0"
+            className="p-2 sm:p-2.5 rounded-xl hover:bg-stone-50 text-stone-400 hover:text-stone-700 transition-colors shrink-0 cursor-pointer"
             title="Send Photo"
           >
-            <ImageIcon className="w-5 h-5 text-stone-500" />
+            <ImageIcon className="w-5 h-5 text-stone-400" />
           </button>
 
-          {/* Text Input Field - iOS Clean Style with no placeholder and no black focus rings */}
+          {/* Text Input Field - Clean capsule style */}
           <input
             type="text"
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
             placeholder=""
-            className="flex-1 px-3.5 py-2.5 bg-slate-100/80 border-0 rounded-xl text-xs sm:text-sm text-stone-900 placeholder-transparent outline-none focus:outline-none focus:ring-0 focus:border-transparent transition-colors"
+            className="flex-1 px-2.5 py-1.5 bg-transparent border-0 text-xs sm:text-sm text-stone-900 placeholder:text-stone-400 outline-none focus:outline-none focus:ring-0"
           />
 
           {/* Send Button */}
           <button
             type="submit"
             disabled={(!inputText.trim() && !selectedImage) || isLoading}
-            className="p-2.5 sm:px-4 sm:py-2 rounded-xl bg-stone-900 hover:bg-stone-800 disabled:opacity-40 text-white text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-all active:scale-95 shrink-0 cursor-pointer"
+            className="p-2 sm:px-4 sm:py-2 rounded-xl bg-stone-900 hover:bg-stone-800 disabled:opacity-30 text-white text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-all active:scale-95 shrink-0 cursor-pointer"
           >
             <Send className="w-4 h-4" />
             <span className="hidden sm:inline">发送</span>
