@@ -756,7 +756,7 @@ export default function App() {
         {activeTab === 'chat' && (
           <div className="w-full h-full flex flex-col md:flex-row overflow-hidden bg-transparent">
             {/* Left pane: Friends list */}
-            <div className={`h-full shrink-0 w-full md:w-80 lg:w-96 flex-col border-r border-stone-200/60 bg-transparent overflow-y-auto pb-32 md:pb-0 ${chatView === 'chat' ? 'hidden md:flex' : 'flex'}`}>
+            <div className={`h-full shrink-0 w-full md:w-80 flex-col border-r border-stone-200/60 bg-transparent overflow-y-auto pb-32 md:pb-0 ${chatView === 'chat' ? 'hidden md:flex' : 'flex'}`}>
               <div className="px-4 py-6">
                  <div className="flex items-center justify-between mb-6">
                    <h2 className="text-2xl sm:text-3xl font-medium tracking-tight text-stone-900 font-sans">Friends</h2>

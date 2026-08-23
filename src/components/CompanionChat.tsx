@@ -16,7 +16,9 @@ import {
   MoreVertical,
   Trash2,
   Copy,
-  Check
+  Check,
+  Languages,
+  Lightbulb
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { Companion, ChatMessage, VocabItem, CompanionSparkRecord, UserProfile } from '../types';
@@ -161,16 +163,31 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
 
   const messages = companionMessages || [];
 
-  const scrollToBottom = (behavior: ScrollBehavior = 'auto') => {
-    messagesEndRef.current?.scrollIntoView({ behavior });
+  const scrollToBottom = (behavior: ScrollBehavior = 'smooth') => {
+    messagesEndRef.current?.scrollIntoView({ behavior, block: 'end' });
   };
 
-  // Instant scroll to bottom when switching companion or when message count changes
+  // 切换角色时立即无动画触底，且确保渲染完成后触底
   useEffect(() => {
-    scrollToBottom('auto');
-  }, [companion.id, messages.length]);
+    const timer = setTimeout(() => {
+      requestAnimationFrame(() => {
+        scrollToBottom('auto');
+      });
+    }, 50);
+    return () => clearTimeout(timer);
+  }, [companion.id]);
 
-  // Smooth scroll when loading or sending
+  // 收到新消息时平滑触底
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      requestAnimationFrame(() => {
+        scrollToBottom('smooth');
+      });
+    }, 50);
+    return () => clearTimeout(timer);
+  }, [messages.length]);
+
+  // Smooth scroll when loading
   useEffect(() => {
     if (isLoading) {
       scrollToBottom('smooth');
@@ -599,8 +616,18 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
       return;
     }
     setSpeakingMsgId(msgId);
-    speakKorean(text, companion.voice_slot || 'ko-KR-Standard-C', companion.tts_rate || 1.0, () => {
-      setSpeakingMsgId(null);
+    speakKorean(text, {
+      gender: companion.gender === 'male' ? 'male' : 'female',
+      characterId: companion.id,
+      rate: companion.tts_rate || 1.0,
+      pitch: 1.0,
+      onEnd: () => {
+        setSpeakingMsgId(null);
+      },
+      onError: (err) => {
+        console.warn('speakKorean error:', err);
+        setSpeakingMsgId(null);
+      }
     });
   };
 
@@ -673,12 +700,12 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
   const userAvatarSrc = userProfile?.avatarUrl || localStorage.getItem('user_profile_avatar') || '';
 
   return (
-    <div className={`flex flex-col h-full w-full max-w-3xl mx-auto relative overflow-hidden ${
+    <div className={`flex flex-col h-full w-full relative overflow-hidden ${
       theme === 'kkt' 
-        ? 'bg-[#b2c7d9] shadow-lg border-x border-[#9bbbd4]' 
+        ? 'bg-[#b2c7d9] shadow-lg' 
         : theme === 'wechat' 
           ? 'bg-[#EDEDED]' 
-          : 'bg-[#f5f5f7] rounded-2xl sm:rounded-3xl border border-stone-200/50'
+          : 'bg-[#f5f5f7] border-l border-stone-200/50'
     }`}>
       
       {/* TOP HEADER */}
@@ -936,15 +963,6 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
                           theme === 'wechat' ? 'bg-white text-[#2D2D2D] rounded-md shadow-xs' : 'bg-white text-stone-900 rounded-2xl rounded-tl-sm shadow-xs'
                         }`}
                       >
-                        {/* Pinned Core Memory Indicator */}
-                        {(msg.isPinned || msg.isMemory) && (
-                          <span 
-                            className="absolute top-1.5 right-1.5 flex items-center justify-center pointer-events-none" 
-                            title="核心记忆 (Permanent Key Memory)"
-                          >
-                            <Bookmark className="w-3.5 h-3.5 text-slate-400 opacity-60 stroke-[1.5]" />
-                          </span>
-                        )}
                         <div className="space-y-2.5">
                           
                           {/* Primary Korean Dialogue */}
@@ -956,14 +974,16 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
                                 .replace(/（[^）]*[\u4e00-\u9fa5]+[^）]*）/g, '')
                                 .trim()}
                             </p>
+                          </div>
 
-                            {/* Discrete Toggle Chips Bar */}
-                            <div className="flex items-center gap-1.5 pt-1 flex-wrap">
+                          {/* Discrete Toggle Chips Bar */}
+                          <div className="flex items-center gap-1.5 pt-1.5 flex-wrap">
                               
                               {/* Audio TTS */}
                               <button
                                 type="button"
-                                onClick={() => {
+                                onClick={(e) => {
+                                  e.stopPropagation();
                                   const cleanAudioText = (msg.korean || msg.content || '')
                                     .replace(/\([^)]*[\u4e00-\u9fa5]+[^)]*\)/g, '')
                                     .replace(/\[[^\]]*[\u4e00-\u9fa5]+[^\]]*\]/g, '')
@@ -971,24 +991,26 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
                                     .trim();
                                   playAudio(cleanAudioText, msg.id);
                                 }}
-                                className={`px-2.5 py-1 rounded-full text-xs flex items-center gap-1 transition-all ${
+                                className={`p-1.5 rounded-full transition-all flex items-center justify-center ${
                                   speakingMsgId === msg.id 
-                                    ? 'bg-amber-100 text-amber-900 font-semibold' 
-                                    : 'bg-stone-100 hover:bg-stone-200 text-stone-600'
+                                    ? 'bg-amber-100 text-amber-900 border border-amber-200/50 shadow-xs animate-pulse' 
+                                    : 'text-stone-400 hover:text-stone-800 hover:bg-stone-100'
                                 }`}
-                                title="Voice Readout"
+                                title="语音朗读 (Voice Readout)"
                               >
-                                <Volume2 className={`w-3.5 h-3.5 ${speakingMsgId === msg.id ? 'animate-pulse text-amber-700' : 'text-stone-500'}`} />
-                                <span>{speakingMsgId === msg.id ? 'Reading' : 'Voice'}</span>
+                                <Volume2 className="w-3.5 h-3.5" />
                               </button>
 
                               {/* Regenerate Button */}
                               <button
                                 type="button"
                                 disabled={isLoading}
-                                onClick={() => handleRegenerateMessage(msg.id)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleRegenerateMessage(msg.id);
+                                }}
                                 className={`p-1.5 rounded-full text-stone-400 hover:text-stone-800 hover:bg-stone-100 transition-all ${isLoading && isLastAssistant ? 'opacity-50 cursor-not-allowed' : ''}`}
-                                title="重新生成回复 (Regenerate Reply)"
+                                title="重新生成回复 (Regenerate)"
                               >
                                 <RotateCcw className={`w-3.5 h-3.5 ${isLoading && isLastAssistant ? 'animate-spin text-amber-600' : ''}`} />
                               </button>
@@ -996,13 +1018,16 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
                               {/* Bookmark */}
                               <button
                                 type="button"
-                                onClick={() => onSaveDialogue(msg)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onSaveDialogue(msg);
+                                }}
                                 className={`p-1.5 rounded-full transition-all ${
                                   isMsgBookmarked
                                     ? 'bg-amber-100 text-amber-900'
                                     : 'text-stone-400 hover:text-stone-800 hover:bg-stone-100'
                                 }`}
-                                title="Save sentence"
+                                title="收藏句子 (Save Sentence)"
                               >
                                 <Bookmark className={`w-3.5 h-3.5 ${isMsgBookmarked ? 'fill-amber-600 text-amber-600' : ''}`} />
                               </button>
@@ -1010,94 +1035,134 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
                               {/* Core Memory Pin quick toggle */}
                               <button
                                 type="button"
-                                onClick={() => handleTogglePinMemory(msg.id)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleTogglePinMemory(msg.id);
+                                }}
                                 className={`p-1.5 rounded-full transition-all ${
                                   msg.isPinned || msg.isMemory
                                     ? 'bg-amber-50 text-amber-900'
                                     : 'text-stone-400 hover:text-stone-800 hover:bg-stone-100'
                                 }`}
-                                title={msg.isPinned || msg.isMemory ? "取消核心记忆" : "记住这条 / 设为核心记忆"}
+                                title={msg.isPinned || msg.isMemory ? "取消核心记忆" : "设为核心记忆 (Set Core Memory)"}
                               >
                                 <Bookmark className={`w-3.5 h-3.5 stroke-[1.5] ${msg.isPinned || msg.isMemory ? 'text-amber-700 fill-amber-500/20' : 'text-slate-400 opacity-60'}`} />
                               </button>
 
-                              <div className="h-3 w-[1px] bg-stone-200 mx-0.5" />
+                              <div className="h-3 w-[1px] bg-stone-200/60 mx-1 shrink-0" />
 
-                              {/* Independent Toggle: Chinese Translation */}
-                              {hasZh && (
+                              {/* Translation Switch Icon Button */}
+                              {(hasZh || hasEn) && (
                                 <button
                                   type="button"
-                                  onClick={() => toggleMessageSection(msg.id, 'zh')}
-                                  className={`px-2 py-0.5 rounded-full text-[11px] font-sans flex items-center gap-1 transition-all ${
-                                    showZh
-                                      ? 'bg-amber-100 text-amber-950 font-bold'
-                                      : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    const isCurrentlyExpanded = isSectionVisible(msg.id, 'zh') || isSectionVisible(msg.id, 'en');
+                                    setMessageExpandedState((prev) => {
+                                      const msgState = prev[msg.id] || {};
+                                      return {
+                                        ...prev,
+                                        [msg.id]: {
+                                          ...msgState,
+                                          zh: hasZh ? !isCurrentlyExpanded : false,
+                                          en: hasEn ? !isCurrentlyExpanded : false,
+                                        },
+                                      };
+                                    });
+                                  }}
+                                  className={`p-1.5 rounded-full transition-all ${
+                                    (isSectionVisible(msg.id, 'zh') || isSectionVisible(msg.id, 'en'))
+                                      ? 'bg-amber-100 text-amber-900'
+                                      : 'text-stone-400 hover:text-stone-800 hover:bg-stone-100'
                                   }`}
+                                  title="翻译切换 (Translate Toggle)"
                                 >
-                                  <span>Translation</span>
+                                  <Languages className="w-3.5 h-3.5" />
                                 </button>
                               )}
 
-                              {/* Independent Toggle: English Translation */}
-                              {hasEn && languageMode !== 'zh' && (
+                              {/* Lightbulb (Vocab/Grammar/Tip expand toggle) */}
+                              {showLearningUI && (hasVocab || hasGrammar || hasTip) && (
                                 <button
                                   type="button"
-                                  onClick={() => toggleMessageSection(msg.id, 'en')}
-                                  className={`px-2 py-0.5 rounded-full text-[11px] font-sans flex items-center gap-1 transition-all ${
-                                    showEn
-                                      ? 'bg-sky-100 text-sky-950 font-bold'
-                                      : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    const isCurrentlyExpanded = isSectionVisible(msg.id, 'vocab') || isSectionVisible(msg.id, 'grammar') || isSectionVisible(msg.id, 'tip');
+                                    setMessageExpandedState((prev) => {
+                                      const msgState = prev[msg.id] || {};
+                                      return {
+                                        ...prev,
+                                        [msg.id]: {
+                                          ...msgState,
+                                          vocab: hasVocab ? !isCurrentlyExpanded : false,
+                                          grammar: hasGrammar ? !isCurrentlyExpanded : false,
+                                          tip: hasTip ? !isCurrentlyExpanded : false,
+                                        },
+                                      };
+                                    });
+                                  }}
+                                  className={`p-1.5 rounded-full transition-all ${
+                                    (isSectionVisible(msg.id, 'vocab') || isSectionVisible(msg.id, 'grammar') || isSectionVisible(msg.id, 'tip'))
+                                      ? 'bg-amber-100 text-amber-900'
+                                      : 'text-stone-400 hover:text-stone-800 hover:bg-stone-100'
                                   }`}
+                                  title="学习解析 (Learning Analysis)"
                                 >
-                                  <span>EN</span>
+                                  <Lightbulb className="w-3.5 h-3.5" />
                                 </button>
                               )}
 
-                              {/* Independent Toggle: Vocab */}
+                              {/* Capsule counts: Vocab */}
                               {showLearningUI && hasVocab && (
                                 <button
                                   type="button"
-                                  onClick={() => toggleMessageSection(msg.id, 'vocab')}
-                                  className={`px-2 py-0.5 rounded-full text-[11px] font-sans flex items-center gap-1 transition-all ${
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    toggleMessageSection(msg.id, 'vocab');
+                                  }}
+                                  className={`px-2 py-0.5 rounded-md text-[10px] font-medium transition-all ${
                                     showVocab
-                                      ? 'bg-amber-50 text-amber-900 font-bold'
-                                      : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
+                                      ? 'bg-amber-100 text-amber-900 font-semibold border border-amber-200/50'
+                                      : 'bg-stone-100 hover:bg-stone-200 text-stone-500'
                                   }`}
                                 >
-                                  <BookOpen className="w-3 h-3 text-amber-700" />
-                                  <span>Vocab ({msg.vocabulary?.length})</span>
+                                  词 {msg.vocabulary?.length}
                                 </button>
                               )}
 
-                              {/* Independent Toggle: Grammar */}
+                              {/* Capsule counts: Grammar */}
                               {showLearningUI && hasGrammar && (
                                 <button
                                   type="button"
-                                  onClick={() => toggleMessageSection(msg.id, 'grammar')}
-                                  className={`px-2 py-0.5 rounded-full text-[11px] font-sans flex items-center gap-1 transition-all ${
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    toggleMessageSection(msg.id, 'grammar');
+                                  }}
+                                  className={`px-2 py-0.5 rounded-md text-[10px] font-medium transition-all ${
                                     showGrammar
-                                      ? 'bg-emerald-50 text-emerald-900 font-bold'
-                                      : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
+                                      ? 'bg-emerald-100 text-emerald-900 font-semibold border border-emerald-200/50'
+                                      : 'bg-stone-100 hover:bg-stone-200 text-stone-500'
                                   }`}
                                 >
-                                  <Sliders className="w-3 h-3 text-emerald-700" />
-                                  <span>Grammar ({msg.grammar_points?.length})</span>
+                                  法 {msg.grammar_points?.length}
                                 </button>
                               )}
 
-                              {/* Independent Toggle: Tip */}
+                              {/* Capsule counts: Tip */}
                               {showLearningUI && hasTip && (
                                 <button
                                   type="button"
-                                  onClick={() => toggleMessageSection(msg.id, 'tip')}
-                                  className={`px-2 py-0.5 rounded-full text-[11px] font-sans flex items-center gap-1 transition-all ${
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    toggleMessageSection(msg.id, 'tip');
+                                  }}
+                                  className={`px-2 py-0.5 rounded-md text-[10px] font-medium transition-all ${
                                     showTip
-                                      ? 'bg-purple-50 text-purple-900 font-bold'
-                                      : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
+                                      ? 'bg-purple-100 text-purple-900 font-semibold border border-purple-200/50'
+                                      : 'bg-stone-100 hover:bg-stone-200 text-stone-500'
                                   }`}
                                 >
-                                  <HelpCircle className="w-3 h-3 text-purple-700" />
-                                  <span>Tips</span>
+                                  提示
                                 </button>
                               )}
 
@@ -1223,7 +1288,6 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
                           )}
 
                         </div>
-                      </div>
 
                       {/* Timestamp at bottom outer right of bubble */}
                       <span className="text-[10px] text-stone-400 font-sans select-none shrink-0 self-end pb-0.5">

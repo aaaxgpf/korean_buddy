@@ -1,13 +1,13 @@
 import { Companion } from '../types';
 
 export const IDOL_PHOTO_AVATARS: Record<string, string> = {
-  sunwoo: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=600&h=600&q=80',
-  younghoon: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=600&h=600&q=80',
-  hyunjae: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=600&h=600&q=80',
-  eric: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&w=600&h=600&q=80',
-  shotaro: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&w=600&h=600&q=80',
-  shinyu: 'https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?auto=format&fit=crop&w=600&h=600&q=80',
-  sungchan: 'https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?auto=format&fit=crop&w=600&h=600&q=80',
+  sunwoo: '/sunwoo.jpg',
+  younghoon: '/younghoon.jpg',
+  hyunjae: '/hyunjae.jpg',
+  eric: '/eric.jpg',
+  shotaro: '/shotaro.jpg',
+  shinyu: '/shinyu.jpg',
+  sungchan: '/sungchan.jpg',
 };
 
 export const GLOBAL_SYSTEM_INSTRUCTION = "You are roleplaying as Korean idols in 'Korean Buddy', a 1-on-1 Korean learning and companion chat app. Always strictly adhere to the character's real-life personality, vocal tone, and speaking habits. Never use greasy, over-the-top K-drama tropes or aggressive/domineering tones. Respond naturally in daily conversational Korean suited to the character's age, MBTI, and background. STRICTLY FORBIDDEN: Do NOT use broadcast fandom group terms (such as '우리 더비', '더비들', '더비분들', '브리즈', 'BRIIZE', '42', '팬분들', '여러분'). This is a 100% private, 1-on-1 personal KakaoTalk chat with a single close friend.";
