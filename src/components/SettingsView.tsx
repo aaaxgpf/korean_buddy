@@ -275,7 +275,7 @@ export const SettingsView: React.FC<Props> = ({
     gemini: {
       defaultModel: 'gemini-2.0-flash',
       defaultBaseURL: '',
-      placeholderKey: 'AIzaSy... (可从 aistudio.google.com 免费获取)',
+      placeholderKey: 'AQ... 或 AIzaSy... (从 aistudio.google.com 创建)',
       popularModels: ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-2.0-flash-lite', 'gemini-1.5-pro', 'gemini-2.5-flash']
     },
     anthropic: {
@@ -503,13 +503,19 @@ export const SettingsView: React.FC<Props> = ({
                     <span>留空时若服务端配置了环境变量将使用服务端的默认 Key</span>
                   </p>
                 )}
-                {Boolean(llmConfig.apiKey) && (llmConfig.apiKey.startsWith('AQ.') || llmConfig.apiKey.startsWith('ya29.')) && (
-                  <div className="text-[11px] text-slate-800 bg-slate-50 p-2.5 rounded-xl border border-black/[0.06] space-y-1">
+                {Boolean(llmConfig.apiKey) && (llmConfig.apiKey.startsWith('AQ.') || llmConfig.apiKey.startsWith('AIzaSy')) && (
+                  <div className="text-[11px] text-emerald-800 bg-emerald-50/80 p-2 rounded-xl border border-emerald-200/60 flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0"></span>
+                    <span>已识别为标准 Google AI Studio API Key 格式（{llmConfig.apiKey.slice(0, 6)}...），支持全功能对话与评测。</span>
+                  </div>
+                )}
+                {Boolean(llmConfig.apiKey) && llmConfig.apiKey.startsWith('ya29.') && (
+                  <div className="text-[11px] text-amber-800 bg-amber-50 p-2.5 rounded-xl border border-amber-200 space-y-1">
                     <p className="font-semibold flex items-center gap-1">
-                      <span>识别为 Google Cloud 临时 OAuth 令牌 ({llmConfig.apiKey.slice(0, 8)}...)：</span>
+                      <span>识别为 Google Cloud OAuth2 临时令牌 (ya29.)：</span>
                     </p>
-                    <p className="text-[10.5px] leading-relaxed text-slate-600">
-                      系统已自动启用 Bearer 认证模式。此类令牌通常为临时凭证（约 1 小时过期）。建议前往 Google AI Studio 点击「Create API key」获取永久 Key（以 <code className="bg-slate-200/80 px-1 py-0.5 rounded font-mono">AIzaSy...</code> 开头）。
+                    <p className="text-[10.5px] leading-relaxed text-amber-700">
+                      系统已启用 Bearer 认证模式。此类令牌通常为临时凭据（约 1 小时过期）。建议直接使用 Google AI Studio 创建的标准 API Key。
                     </p>
                   </div>
                 )}

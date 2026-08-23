@@ -80,11 +80,11 @@ function formatLLMError(error: any, provider: string, apiKey: string): Error {
     if (provider === 'gemini' && cleanKey.startsWith('sk-')) {
       return new Error('Google 鉴权失败：您填入的 API Key 以 "sk-" 开头（属于 OpenAI / DeepSeek / 中转服务商格式）。请在上方切换服务商为 OpenAI、DeepSeek 或 Custom。');
     }
-    if (provider === 'gemini' && (cleanKey.startsWith('AQ.') || cleanKey.startsWith('ya29.'))) {
-      return new Error('Google Cloud Token 鉴权失败或已过期：填入的临时 OAuth2 Token 有效期已过。建议前往 Google AI Studio (aistudio.google.com/app/apikey) 点击「Create API Key」生成永久 Key。');
+    if (provider === 'gemini' && cleanKey.startsWith('ya29.')) {
+      return new Error('Google OAuth Token 鉴权失败或已过期：填入的临时 OAuth2 Token (ya29.) 有效期已过。建议使用 Google AI Studio (aistudio.google.com/app/apikey) 创建的永久 API Key (以 AQ 或 AIzaSy 开头)。');
     }
     if (provider === 'gemini') {
-      return new Error('Google Gemini API 鉴权失败：API Key 无效或未开通。请前往 Google AI Studio (aistudio.google.com/app/apikey) 免费创建并复制官方 API Key。');
+      return new Error('Google Gemini API 鉴权失败：请检查填入的 Google AI Studio API Key 是否完整无误。可在 aistudio.google.com/app/apikey 免费获取。');
     }
     return new Error(`${provider.toUpperCase()} 鉴权失败 (401)：API Key 无效或已过期，请检查填入的 Key 是否正确。`);
   }
@@ -111,9 +111,10 @@ export async function directTestGeminiConnection(config: DirectGeminiConfig): Pr
     throw new Error('检测到您填入的 API Key 以 "sk-" 开头（属于 OpenAI / DeepSeek / 代理中转 Key 格式）。请在上方【LLM Provider】中切换为【OpenAI】、【DeepSeek】或【Custom (中转)】！');
   }
 
-  // Determine preferred auth strategy
-  const isLikelyOAuthToken = cleanKey.startsWith('AQ.') || cleanKey.startsWith('ya29.');
-  const authModes: Array<{ isBearer: boolean }> = isLikelyOAuthToken
+  // Determine preferred auth strategy: Google AI Studio keys (AQ... or AIzaSy...) are API keys.
+  // Only Google OAuth Access Tokens (ya29...) use Bearer authorization.
+  const isOAuthToken = cleanKey.startsWith('ya29.');
+  const authModes: Array<{ isBearer: boolean }> = isOAuthToken
     ? [{ isBearer: true }, { isBearer: false }]
     : [{ isBearer: false }, { isBearer: true }];
 
@@ -457,9 +458,10 @@ ${pinnedMemoriesSection}
     contents.push({ role, parts });
   }
 
-  // Determine preferred auth strategy
-  const isLikelyOAuthToken = cleanKey.startsWith('AQ.') || cleanKey.startsWith('ya29.');
-  const authModes: Array<{ isBearer: boolean }> = isLikelyOAuthToken
+  // Determine preferred auth strategy: Google AI Studio keys (AQ... or AIzaSy...) are API keys.
+  // Only Google OAuth Access Tokens (ya29...) use Bearer authorization.
+  const isOAuthToken = cleanKey.startsWith('ya29.');
+  const authModes: Array<{ isBearer: boolean }> = isOAuthToken
     ? [{ isBearer: true }, { isBearer: false }]
     : [{ isBearer: false }, { isBearer: true }];
 

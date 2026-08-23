@@ -117,8 +117,9 @@ async function callGeminiREST(params: {
   ]));
 
   const cleanKey = apiKey.trim();
-  const isLikelyOAuth = cleanKey.startsWith("AQ.") || cleanKey.startsWith("ya29.");
-  const authModes: Array<{ isBearer: boolean }> = isLikelyOAuth
+  // Google AI Studio API Keys (AQ... or AIzaSy...) are API Keys, not OAuth Access Tokens
+  const isOAuthToken = cleanKey.startsWith("ya29.");
+  const authModes: Array<{ isBearer: boolean }> = isOAuthToken
     ? [{ isBearer: true }, { isBearer: false }]
     : [{ isBearer: false }, { isBearer: true }];
 
