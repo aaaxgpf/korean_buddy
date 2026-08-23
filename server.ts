@@ -58,9 +58,18 @@ async function callGeminiREST(params: {
     throw new Error("NO_API_KEY");
   }
 
-  const requestedModel = (params.model?.trim() || "gemini-3.7-flash").replace(/^models\//, "");
+  const requestedModel = (params.model?.trim() || "gemini-2.0-flash").replace(/^models\//, "");
   const customBase = params.baseURL?.trim();
-  const defaultBase = "https://generativelanguage.googleapis.com/v1beta";
+  
+  // Normalize base URL
+  let baseEndpoint = "https://generativelanguage.googleapis.com/v1beta";
+  if (customBase) {
+    let clean = customBase.replace(/\/+$/, "");
+    if (clean.includes("generativelanguage.googleapis.com") && !clean.includes("/v1")) {
+      clean = `${clean}/v1beta`;
+    }
+    baseEndpoint = clean;
+  }
 
   // Build contents payload
   const contents = params.messages.map((m) => {
@@ -98,45 +107,46 @@ async function callGeminiREST(params: {
     requestBody.generationConfig.responseMimeType = "application/json";
   }
 
-  // Models to attempt: requested model first, then candidates if on default endpoint
-  const modelsToTry = customBase 
-    ? [requestedModel]
-    : [requestedModel, ...MODEL_CANDIDATES.filter((m) => m !== requestedModel)];
+  const uniqueModelsToTry = Array.from(new Set([
+    requestedModel,
+    "gemini-2.0-flash",
+    "gemini-1.5-flash",
+    "gemini-2.0-flash-lite",
+    "gemini-1.5-pro",
+    "gemini-2.5-flash"
+  ]));
 
   const cleanKey = apiKey.trim();
-  const isLikelyOAuthToken = cleanKey.startsWith("AQ.") || cleanKey.startsWith("ya29.");
-  const authModes = isLikelyOAuthToken
+  const isLikelyOAuth = cleanKey.startsWith("AQ.") || cleanKey.startsWith("ya29.");
+  const authModes: Array<{ isBearer: boolean }> = isLikelyOAuth
     ? [{ isBearer: true }, { isBearer: false }]
     : [{ isBearer: false }, { isBearer: true }];
 
   let lastError: any = null;
 
   for (const authMode of authModes) {
-    for (const model of modelsToTry) {
+    for (const model of uniqueModelsToTry) {
       let url: string;
-      if (customBase) {
-        const baseClean = customBase.replace(/\/+$/, "");
-        if (authMode.isBearer) {
-          url = baseClean.includes(":generateContent") 
-            ? baseClean.split("?")[0]
-            : baseClean.includes("/models/")
-              ? `${baseClean}:generateContent`
-              : `${baseClean}/models/${model}:generateContent`;
+      if (authMode.isBearer) {
+        // OAuth Bearer access tokens MUST NOT include ?key= in query string
+        if (baseEndpoint.includes(":generateContent")) {
+          url = baseEndpoint;
+        } else if (baseEndpoint.includes("/models/")) {
+          url = `${baseEndpoint}:generateContent`;
         } else {
-          if (baseClean.includes(":generateContent")) {
-            url = baseClean.includes("?")
-              ? `${baseClean}&key=${encodeURIComponent(cleanKey)}`
-              : `${baseClean}?key=${encodeURIComponent(cleanKey)}`;
-          } else if (baseClean.includes("/models/")) {
-            url = `${baseClean}:generateContent?key=${encodeURIComponent(cleanKey)}`;
-          } else {
-            url = `${baseClean}/models/${model}:generateContent?key=${encodeURIComponent(cleanKey)}`;
-          }
+          url = `${baseEndpoint}/models/${model}:generateContent`;
         }
       } else {
-        url = authMode.isBearer
-          ? `${defaultBase}/models/${model}:generateContent`
-          : `${defaultBase}/models/${model}:generateContent?key=${encodeURIComponent(cleanKey)}`;
+        // Standard API key (AIzaSy...)
+        if (baseEndpoint.includes(":generateContent")) {
+          url = baseEndpoint.includes("?")
+            ? `${baseEndpoint}&key=${encodeURIComponent(cleanKey)}`
+            : `${baseEndpoint}?key=${encodeURIComponent(cleanKey)}`;
+        } else if (baseEndpoint.includes("/models/")) {
+          url = `${baseEndpoint}:generateContent?key=${encodeURIComponent(cleanKey)}`;
+        } else {
+          url = `${baseEndpoint}/models/${model}:generateContent?key=${encodeURIComponent(cleanKey)}`;
+        }
       }
 
       try {
@@ -166,28 +176,20 @@ async function callGeminiREST(params: {
             }
           } catch (_) {}
 
-          // If auth mismatch, try next auth mode
-          if (errorDetail.includes("OAuth 2") || errorDetail.includes("ACCESS_TOKEN_TYPE_UNSUPPORTED")) {
-            break;
+          // Check if auth mode mismatch (e.g. OAuth token passed as key or vice-versa)
+          if (res.status === 401 || (res.status === 400 && (errorDetail.includes("API_KEY_INVALID") || errorDetail.includes("API key not valid") || errorDetail.includes("ACCESS_TOKEN_TYPE_UNSUPPORTED")))) {
+            lastError = new Error(`Google Gemini 鉴权失败 (${res.status}): ${errorDetail}`);
+            break; // Try other auth mode
           }
 
-          // If 401 Unauthorized or 400 API_KEY_INVALID, give a crystal clear message and stop trying
-          if (res.status === 401 || (res.status === 400 && (errorDetail.includes("API_KEY_INVALID") || errorDetail.includes("API key not valid")))) {
-            if (cleanKey.startsWith("AQ.") || cleanKey.startsWith("ya29.")) {
-              throw new Error(`Google Cloud Token 鉴权失败 (${res.status}): 填入的 AQ.Ab... 为临时 OAuth2 Access Token（有效期通常 1 小时）。建议前往 aistudio.google.com/app/apikey 获取永久有效的 AIzaSy... API Key。`);
-            }
-            throw new Error(`Google Gemini 鉴权失败 (${res.status}): API Key 无效或未开通权限。请在 Settings 设置中检查填入的 Google API Key 是否有效。`);
-          }
-
-          // If 404 (model not found), 503 (model overloaded), or 429 (quota / rate limit exceeded) and we have fallbacks, try next candidate
-          if ((res.status === 404 || res.status === 503 || res.status === 429) && modelsToTry.length > 1) {
+          if ((res.status === 404 || res.status === 503 || res.status === 429) && uniqueModelsToTry.length > 1) {
             lastError = new Error(`Gemini API (${res.status}) on ${model}: ${errorDetail}`);
             console.warn(`Gemini model ${model} returned status ${res.status}, failing over to next candidate...`);
             continue;
           }
 
           if (res.status === 429) {
-            throw new Error(`Gemini API 额度超限 (429 RESOURCE_EXHAUSTED)：该 API Key 当前调用频次或免费额度已达上限，建议稍等片刻重试或在 Settings 设置中切换模型/服务商。`);
+            throw new Error(`Gemini API 额度超限 (429 RESOURCE_EXHAUSTED)：当前 API Key 的免费额度已达上限，建议稍后重试或切换服务商。`);
           }
 
           throw new Error(`Gemini API Error (${res.status}): ${errorDetail}`);
@@ -209,8 +211,8 @@ async function callGeminiREST(params: {
         return resultText;
       } catch (err: any) {
         lastError = err;
-        if (customBase || (err.message && (err.message.includes("401") || err.message.includes("鉴权失败") || err.message.includes("API_KEY_INVALID")))) {
-          break; // don't try other models if credentials are fundamentally invalid
+        if (err.message && (err.message.includes("401") || err.message.includes("鉴权失败") || err.message.includes("API_KEY_INVALID"))) {
+          break;
         }
       }
     }
@@ -503,13 +505,19 @@ async function executeUniversalLLM(params: {
       return data.content?.[0]?.text || '';
     } else if (provider === 'openai' || provider === 'deepseek' || (provider === 'custom' && !baseURL?.includes('generativelanguage.googleapis.com'))) {
       const defaultEndpoint = provider === 'deepseek'
-        ? 'https://api.deepseek.com/v1/chat/completions'
+        ? 'https://api.deepseek.com/chat/completions'
         : 'https://api.openai.com/v1/chat/completions';
       const endpoint = baseURL ? (baseURL.endsWith('/chat/completions') ? baseURL : `${baseURL.replace(/\/+$/, '')}/chat/completions`) : defaultEndpoint;
       const defaultModel = provider === 'deepseek' ? 'deepseek-chat' : 'gpt-4o';
+      const effectiveModel = model || defaultModel;
+
+      // DeepSeek JSON requirement: prompt must contain the word "json"
+      const systemInstruction = jsonMode
+        ? `${systemPrompt}\nIMPORTANT: You must respond in valid JSON format.`
+        : systemPrompt;
 
       const payloadMessages = [
-        { role: 'system', content: systemPrompt },
+        { role: 'system', content: systemInstruction },
         ...messages.map(m => ({
           role: m.role === 'user' ? 'user' : 'assistant',
           content: m.content
@@ -517,16 +525,17 @@ async function executeUniversalLLM(params: {
       ];
 
       const body: any = {
-        model: model || defaultModel,
+        model: effectiveModel,
         messages: payloadMessages,
         temperature: 0.85
       };
 
-      if (jsonMode && (provider === 'openai' || provider === 'deepseek')) {
+      // Only add response_format if not reasoning model
+      if (jsonMode && (provider === 'openai' || provider === 'deepseek') && !effectiveModel.includes('reasoner')) {
         body.response_format = { type: 'json_object' };
       }
 
-      const res = await fetch(endpoint, {
+      let res = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${apiKey}`,
@@ -534,6 +543,19 @@ async function executeUniversalLLM(params: {
         },
         body: JSON.stringify(body)
       });
+
+      // Fallback: If 400 Bad Request due to response_format not supported, retry without response_format
+      if (!res.ok && res.status === 400 && body.response_format) {
+        delete body.response_format;
+        res = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(body)
+        });
+      }
 
       if (!res.ok) {
         const errText = await res.text();
@@ -545,7 +567,7 @@ async function executeUniversalLLM(params: {
     } else if (provider === 'gemini' || (provider === 'custom' && baseURL?.includes('generativelanguage.googleapis.com'))) {
       return await callGeminiREST({
         apiKey,
-        model: model || 'gemini-3.6-flash',
+        model: model || 'gemini-2.0-flash',
         baseURL,
         systemPrompt,
         messages,
@@ -597,7 +619,7 @@ app.post("/api/test-llm", async (req, res) => {
     const testPrompt = 'You are an AI assistant. Reply in JSON format with { "status": "connected", "message": "안녕하세요! AI 연결이 성공적으로 완료되었습니다." }';
     const rawText = await executeUniversalLLM({
       systemPrompt: testPrompt,
-      messages: [{ role: 'user', content: 'Say hello and confirm connection.' }],
+      messages: [{ role: 'user', content: 'Say hello and confirm connection in json format.' }],
       customConfig: { provider, apiKey, baseURL, model },
       jsonMode: true
     });

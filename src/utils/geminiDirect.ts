@@ -33,14 +33,16 @@ export interface DirectChatParams {
  * Build correct Gemini generateContent URL based on auth mode
  */
 function buildGeminiUrl(baseURL: string | undefined, model: string, apiKey: string, isBearerAuth: boolean): string {
-  const defaultBase = 'https://generativelanguage.googleapis.com/v1beta';
+  let defaultBase = 'https://generativelanguage.googleapis.com/v1beta';
   const cleanModel = (model || 'gemini-2.0-flash').replace(/^models\//, '');
   const cleanKey = apiKey.trim();
 
   if (baseURL && baseURL.trim()) {
-    const baseClean = baseURL.trim().replace(/\/+$/, '');
+    let baseClean = baseURL.trim().replace(/\/+$/, '');
+    if (baseClean.includes('generativelanguage.googleapis.com') && !baseClean.includes('/v1')) {
+      baseClean = `${baseClean}/v1beta`;
+    }
     if (isBearerAuth) {
-      // Bearer auth does not append ?key=
       if (baseClean.includes(':generateContent')) {
         return baseClean.split('?')[0];
       } else if (baseClean.includes('/models/')) {
@@ -49,7 +51,6 @@ function buildGeminiUrl(baseURL: string | undefined, model: string, apiKey: stri
         return `${baseClean}/models/${cleanModel}:generateContent`;
       }
     } else {
-      // Standard API key auth appends ?key=
       if (baseClean.includes(':generateContent')) {
         return baseClean.includes('?')
           ? `${baseClean}&key=${encodeURIComponent(cleanKey)}`
@@ -77,13 +78,13 @@ function formatLLMError(error: any, provider: string, apiKey: string): Error {
 
   if (rawMsg.includes('invalid authentication credentials') || rawMsg.includes('Expected OAuth 2') || rawMsg.includes('API_KEY_INVALID') || rawMsg.includes('API key not valid') || rawMsg.includes('401') || rawMsg.includes('UNAUTHENTICATED')) {
     if (provider === 'gemini' && cleanKey.startsWith('sk-')) {
-      return new Error('Google 鉴权失败：您填入的 API Key 以 "sk-" 开头（这是 OpenAI / DeepSeek / 中转服务商的 Key 格式）。请在上方【LLM Provider】中切换为【OpenAI】、【DeepSeek】或【Custom (中转)】即可正常使用！');
+      return new Error('Google 鉴权失败：您填入的 API Key 以 "sk-" 开头（属于 OpenAI / DeepSeek / 中转服务商格式）。请在上方切换服务商为 OpenAI、DeepSeek 或 Custom。');
     }
     if (provider === 'gemini' && (cleanKey.startsWith('AQ.') || cleanKey.startsWith('ya29.'))) {
-      return new Error('Google Cloud Token 鉴权失败或已过期：您填入的 "AQ.Ab..." 或 "ya29..." 属于临时 OAuth2 Access Token（通常有效时长仅 1 小时）。建议前往 Google AI Studio (https://aistudio.google.com/app/apikey) 点击「Create API Key」生成永久有效的标准 API Key（通常以 AIzaSy 开头）。');
+      return new Error('Google Cloud Token 鉴权失败或已过期：填入的临时 OAuth2 Token 有效期已过。建议前往 Google AI Studio (aistudio.google.com/app/apikey) 点击「Create API Key」生成永久 Key。');
     }
     if (provider === 'gemini') {
-      return new Error('Google Gemini API 鉴权失败：API Key 无效或未开通。请前往 Google AI Studio (https://aistudio.google.com/app/apikey) 免费创建并复制官方 API Key（以 AIzaSy 开头），或在上方切换为其他大模型服务商。');
+      return new Error('Google Gemini API 鉴权失败：API Key 无效或未开通。请前往 Google AI Studio (aistudio.google.com/app/apikey) 免费创建并复制官方 API Key。');
     }
     return new Error(`${provider.toUpperCase()} 鉴权失败 (401)：API Key 无效或已过期，请检查填入的 Key 是否正确。`);
   }
@@ -158,10 +159,10 @@ export async function directTestGeminiConnection(config: DirectGeminiConfig): Pr
 
         if (response.ok) {
           const data = await response.json();
-          const replyText = data.candidates?.[0]?.content?.parts?.[0]?.text || '안녕하세요! API 연결이 성공적으로 완료되었습니다.';
+          const replyText = data.candidates?.[0]?.content?.parts?.[0]?.text || '연결이 성공적으로 완료되었습니다.';
           return {
             ok: true,
-            message: `连接成功！已通过模型 [${modelName}] 成功响应。`,
+            message: `连接成功，已通过模型 [${modelName}] 成功响应。`,
             raw: replyText
           };
         } else {
@@ -565,7 +566,7 @@ export async function directSendChat(params: DirectChatParams): Promise<any> {
     if (!cleanKey) throw new Error('NO_API_KEY');
 
     const defaultBase = provider === 'deepseek'
-      ? 'https://api.deepseek.com/v1'
+      ? 'https://api.deepseek.com'
       : 'https://api.openai.com/v1';
 
     const baseURL = (params.baseURL?.trim() || defaultBase).replace(/\/+$/, '');
@@ -596,7 +597,7 @@ ${character?.system_prompt || ''}
 2. 平等松弛的 20 代韩国男生日常感，面对调侃时自然无语、拌嘴吐槽或顺势接梗，绝不强行霸道宣誓主权。
 3. 句尾自然克制，像发 KakaoTalk 一样随性收尾，严禁最后一句强行加戏或立深情人设。
 4. 每次回复输出 3~5 句连贯口语短句（带自然换行）。
-请必须以纯 JSON 格式输出：
+IMPORTANT: You must respond in valid JSON format:
 {
   "korean_text": "한국어 3~5문장",
   "translation_text": "中文翻译",
@@ -613,19 +614,36 @@ ${character?.system_prompt || ''}
       }))
     ];
 
-    const res = await fetch(endpoint, {
+    const requestBody: any = {
+      model,
+      messages,
+      temperature: 0.85
+    };
+
+    if (!model.includes('reasoner')) {
+      requestBody.response_format = { type: 'json_object' };
+    }
+
+    let res = await fetch(endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${cleanKey}`
       },
-      body: JSON.stringify({
-        model,
-        messages,
-        response_format: { type: 'json_object' },
-        temperature: 0.85
-      })
+      body: JSON.stringify(requestBody)
     });
+
+    if (!res.ok && res.status === 400 && requestBody.response_format) {
+      delete requestBody.response_format;
+      res = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${cleanKey}`
+        },
+        body: JSON.stringify(requestBody)
+      });
+    }
 
     if (!res.ok) {
       const errData = await res.json().catch(() => ({}));
@@ -635,7 +653,9 @@ ${character?.system_prompt || ''}
     const data = await res.json();
     const rawContent = data.choices?.[0]?.message?.content || '{}';
     try {
-      const parsed = JSON.parse(rawContent);
+      // Clean possible markdown code fences before parsing
+      const jsonText = rawContent.replace(/```(?:json)?\s*([\s\S]*?)\s*```/i, '$1').trim();
+      const parsed = JSON.parse(jsonText);
       return {
         korean_text: parsed.korean_text || parsed.korean || '',
         korean: parsed.korean_text || parsed.korean || '',
@@ -648,6 +668,25 @@ ${character?.system_prompt || ''}
         learning_tip: parsed.learning_tip || ''
       };
     } catch {
+      // Fallback extract JSON between braces
+      const firstB = rawContent.indexOf('{');
+      const lastB = rawContent.lastIndexOf('}');
+      if (firstB !== -1 && lastB !== -1 && lastB > firstB) {
+        try {
+          const parsed = JSON.parse(rawContent.substring(firstB, lastB + 1));
+          return {
+            korean_text: parsed.korean_text || parsed.korean || '',
+            korean: parsed.korean_text || parsed.korean || '',
+            translation_text: parsed.translation_text || parsed.translation_zh || '',
+            translation_zh: parsed.translation_text || parsed.translation_zh || '',
+            translation_en: parsed.translation_en || '',
+            tts_audio_text: parsed.tts_audio_text || parsed.korean_text || '',
+            vocabulary: Array.isArray(parsed.vocabulary) ? parsed.vocabulary : [],
+            grammar_points: Array.isArray(parsed.grammar_points) ? parsed.grammar_points : [],
+            learning_tip: parsed.learning_tip || ''
+          };
+        } catch (_) {}
+      }
       return {
         korean_text: rawContent,
         korean: rawContent,

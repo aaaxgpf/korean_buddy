@@ -211,6 +211,25 @@ export const SettingsView: React.FC<Props> = ({
     setIsTestingLLM(true);
     setLlmTestStatus(null);
     try {
+      // 1. Try server proxy first to avoid browser CORS issues (especially for DeepSeek/OpenAI)
+      const res = await fetch('/api/test-llm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(llmConfig)
+      }).catch(() => null);
+
+      if (res) {
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data.ok) {
+          setLlmTestStatus({ ok: true, message: data.message || '大模型已成功响应！' });
+          return;
+        } else if (data.error && !data.error.includes('NO_API_KEY')) {
+          setLlmTestStatus({ ok: false, message: data.error });
+          return;
+        }
+      }
+
+      // 2. If server is not available or returned NO_API_KEY, fallback to client direct test
       if (llmConfig.apiKey?.trim()) {
         try {
           const result = await directTestLLMConnection({
@@ -222,38 +241,13 @@ export const SettingsView: React.FC<Props> = ({
           setLlmTestStatus({ ok: true, message: result.message || '大模型已成功响应！' });
           return;
         } catch (directErr: any) {
-          // If direct test fails due to CORS (e.g. some third-party proxies), try backend endpoint /api/test-llm if available
-          console.warn('Direct test warning, trying server proxy as fallback:', directErr);
-          const res = await fetch('/api/test-llm', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(llmConfig)
-          }).catch(() => null);
-
-          if (res && res.ok) {
-            const data = await res.json();
-            if (data.ok) {
-              setLlmTestStatus({ ok: true, message: data.message || '大模型已成功响应！' });
-              return;
-            }
-          }
           throw directErr;
         }
       }
 
-      const res = await fetch('/api/test-llm', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(llmConfig)
-      });
-      const data = await res.json();
-      if (res.ok && data.ok) {
-        setLlmTestStatus({ ok: true, message: data.message || '大模型已成功响应！' });
-      } else {
-        setLlmTestStatus({ ok: false, message: data.error || '连接失败，请检查 Key、Base URL 或网络' });
-      }
+      setLlmTestStatus({ ok: false, message: '请先填入有效的 API Key 或配置服务商' });
     } catch (err: any) {
-      setLlmTestStatus({ ok: false, message: err.message || '网络连接异常' });
+      setLlmTestStatus({ ok: false, message: err.message || '连接测试异常，请检查网络或 API Key' });
     } finally {
       setIsTestingLLM(false);
     }
@@ -292,8 +286,8 @@ export const SettingsView: React.FC<Props> = ({
     },
     deepseek: {
       defaultModel: 'deepseek-chat',
-      defaultBaseURL: 'https://api.deepseek.com/v1',
-      placeholderKey: 'sk-...',
+      defaultBaseURL: 'https://api.deepseek.com',
+      placeholderKey: 'sk-... (DeepSeek 开放平台 API Key)',
       popularModels: ['deepseek-chat', 'deepseek-reasoner']
     },
     openai: {
@@ -498,53 +492,53 @@ export const SettingsView: React.FC<Props> = ({
                     href="https://aistudio.google.com/app/apikey"
                     target="_blank"
                     rel="noreferrer"
-                    className="text-indigo-600 hover:text-indigo-800 font-medium hover:underline inline-flex items-center gap-1"
+                    className="text-slate-600 hover:text-slate-900 font-medium hover:underline inline-flex items-center gap-1"
                   >
-                    <span>👉 点此前往 Google AI Studio 免费获取 Gemini API Key (推荐)</span>
+                    <span>前往 Google AI Studio 获取 Gemini API Key</span>
                     <ExternalLink size={11} />
                   </a>
                 </div>
                 {!llmConfig.apiKey && (
-                  <p className="text-[11px] text-emerald-700 flex items-center gap-1 font-medium">
-                    <span>✨ 留空时系统将使用内置免费通道畅聊</span>
+                  <p className="text-[11px] text-slate-500 flex items-center gap-1 font-medium">
+                    <span>留空时若服务端配置了环境变量将使用服务端的默认 Key</span>
                   </p>
                 )}
                 {Boolean(llmConfig.apiKey) && (llmConfig.apiKey.startsWith('AQ.') || llmConfig.apiKey.startsWith('ya29.')) && (
-                  <div className="text-[11px] text-blue-900 bg-blue-50 p-2.5 rounded-xl border border-blue-200 space-y-1">
+                  <div className="text-[11px] text-slate-800 bg-slate-50 p-2.5 rounded-xl border border-black/[0.06] space-y-1">
                     <p className="font-semibold flex items-center gap-1">
-                      <span>ℹ️ 识别为 Google Cloud 临时 OAuth 令牌 ({llmConfig.apiKey.slice(0, 8)}...)：</span>
+                      <span>识别为 Google Cloud 临时 OAuth 令牌 ({llmConfig.apiKey.slice(0, 8)}...)：</span>
                     </p>
-                    <p className="text-[10.5px] leading-relaxed text-blue-800">
-                      系统已为您自动启用 Bearer 认证模式。注意：此类令牌通常为临时凭证（有效期约 1 小时）。若需长期稳定使用，建议前往 Google AI Studio 点击「Create API key」获取永久 Key（以 <code className="bg-blue-100 px-1 py-0.5 rounded font-mono">AIzaSy...</code> 开头）。
+                    <p className="text-[10.5px] leading-relaxed text-slate-600">
+                      系统已自动启用 Bearer 认证模式。此类令牌通常为临时凭证（约 1 小时过期）。建议前往 Google AI Studio 点击「Create API key」获取永久 Key（以 <code className="bg-slate-200/80 px-1 py-0.5 rounded font-mono">AIzaSy...</code> 开头）。
                     </p>
                   </div>
                 )}
                 {Boolean(llmConfig.apiKey) && llmConfig.apiKey.startsWith('sk-') && (
-                  <div className="text-[11px] text-amber-800 bg-amber-50 p-2.5 rounded-xl border border-amber-200 space-y-1.5">
+                  <div className="text-[11px] text-slate-800 bg-slate-50 p-2.5 rounded-xl border border-black/[0.06] space-y-1.5">
                     <p className="font-semibold flex items-center gap-1">
-                      <span>⚠️ 检测到您的 Key 为 "sk-" 格式（属于 OpenAI / DeepSeek / 中转服务商）：</span>
+                      <span>检测到您的 Key 为 "sk-" 格式（属于 OpenAI / DeepSeek / 中转服务商）：</span>
                     </p>
                     <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
                       <button
                         type="button"
                         onClick={() => handleSelectProvider('deepseek')}
-                        className="px-2 py-0.5 bg-amber-200 hover:bg-amber-300 text-amber-900 rounded-md font-bold text-[10px] cursor-pointer transition"
+                        className="px-2 py-0.5 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded font-semibold text-[10px] cursor-pointer transition"
                       >
-                        一键切换为 DeepSeek
+                        切换为 DeepSeek
                       </button>
                       <button
                         type="button"
                         onClick={() => handleSelectProvider('openai')}
-                        className="px-2 py-0.5 bg-amber-200 hover:bg-amber-300 text-amber-900 rounded-md font-bold text-[10px] cursor-pointer transition"
+                        className="px-2 py-0.5 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded font-semibold text-[10px] cursor-pointer transition"
                       >
-                        一键切换为 OpenAI
+                        切换为 OpenAI
                       </button>
                       <button
                         type="button"
                         onClick={() => handleSelectProvider('custom')}
-                        className="px-2 py-0.5 bg-amber-200 hover:bg-amber-300 text-amber-900 rounded-md font-bold text-[10px] cursor-pointer transition"
+                        className="px-2 py-0.5 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded font-semibold text-[10px] cursor-pointer transition"
                       >
-                        一键切换为 Custom (中转)
+                        切换为 Custom (中转)
                       </button>
                     </div>
                   </div>
