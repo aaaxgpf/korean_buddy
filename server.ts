@@ -103,86 +103,115 @@ async function callGeminiREST(params: {
     ? [requestedModel]
     : [requestedModel, ...MODEL_CANDIDATES.filter((m) => m !== requestedModel)];
 
+  const cleanKey = apiKey.trim();
+  const isLikelyOAuthToken = cleanKey.startsWith("AQ.") || cleanKey.startsWith("ya29.");
+  const authModes = isLikelyOAuthToken
+    ? [{ isBearer: true }, { isBearer: false }]
+    : [{ isBearer: false }, { isBearer: true }];
+
   let lastError: any = null;
 
-  for (const model of modelsToTry) {
-    let url: string;
-    if (customBase) {
-      const baseClean = customBase.replace(/\/+$/, "");
-      if (baseClean.includes(":generateContent")) {
-        url = baseClean.includes("?")
-          ? `${baseClean}&key=${encodeURIComponent(apiKey)}`
-          : `${baseClean}?key=${encodeURIComponent(apiKey)}`;
-      } else if (baseClean.includes("/models/")) {
-        url = `${baseClean}:generateContent?key=${encodeURIComponent(apiKey)}`;
-      } else {
-        url = `${baseClean}/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
-      }
-    } else {
-      url = `${defaultBase}/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
-    }
-
-    try {
-      // STRICT RULES FOR GEMINI AUTHENTICATION:
-      // 1. NEVER set "Authorization: Bearer <API_KEY>" in headers (causes 401 ACCESS_TOKEN_TYPE_UNSUPPORTED)
-      // 2. Pass apiKey via URL query parameter: ?key=${apiKey}
-      // 3. Set "x-goog-api-key": apiKey in Request Headers
-      const res = await fetch(url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-goog-api-key": apiKey,
-        },
-        body: JSON.stringify(requestBody),
-      });
-
-      if (!res.ok) {
-        const errText = await res.text();
-        let errorDetail = errText;
-        try {
-          const jsonErr = JSON.parse(errText);
-          if (jsonErr.error?.message) {
-            errorDetail = jsonErr.error.message;
+  for (const authMode of authModes) {
+    for (const model of modelsToTry) {
+      let url: string;
+      if (customBase) {
+        const baseClean = customBase.replace(/\/+$/, "");
+        if (authMode.isBearer) {
+          url = baseClean.includes(":generateContent") 
+            ? baseClean.split("?")[0]
+            : baseClean.includes("/models/")
+              ? `${baseClean}:generateContent`
+              : `${baseClean}/models/${model}:generateContent`;
+        } else {
+          if (baseClean.includes(":generateContent")) {
+            url = baseClean.includes("?")
+              ? `${baseClean}&key=${encodeURIComponent(cleanKey)}`
+              : `${baseClean}?key=${encodeURIComponent(cleanKey)}`;
+          } else if (baseClean.includes("/models/")) {
+            url = `${baseClean}:generateContent?key=${encodeURIComponent(cleanKey)}`;
+          } else {
+            url = `${baseClean}/models/${model}:generateContent?key=${encodeURIComponent(cleanKey)}`;
           }
-        } catch (_) {}
-
-        // If 401 Unauthorized or 400 API_KEY_INVALID, give a crystal clear message and stop trying
-        if (res.status === 401 || (res.status === 400 && (errorDetail.includes("API_KEY_INVALID") || errorDetail.includes("API key not valid")))) {
-          throw new Error(`Google Gemini 鉴权失败 (${res.status}): API Key 无效或未开通权限。请在 Settings 设置中检查填入的 Google API Key 是否有效（兼容 AQ.Ab... 及 AIzaSy... 等格式）。`);
         }
-
-        // If 404 (model not found), 503 (model overloaded), or 429 (quota / rate limit exceeded) and we have fallbacks, try next candidate
-        if ((res.status === 404 || res.status === 503 || res.status === 429) && modelsToTry.length > 1) {
-          lastError = new Error(`Gemini API (${res.status}) on ${model}: ${errorDetail}`);
-          console.warn(`Gemini model ${model} returned status ${res.status}, failing over to next candidate...`);
-          continue;
-        }
-
-        if (res.status === 429) {
-          throw new Error(`Gemini API 额度超限 (429 RESOURCE_EXHAUSTED)：该 API Key 当前调用频次或免费额度已达上限，建议稍等片刻重试或在 Settings 设置中切换模型/服务商。`);
-        }
-
-        throw new Error(`Gemini API Error (${res.status}): ${errorDetail}`);
+      } else {
+        url = authMode.isBearer
+          ? `${defaultBase}/models/${model}:generateContent`
+          : `${defaultBase}/models/${model}:generateContent?key=${encodeURIComponent(cleanKey)}`;
       }
 
-      const data = await res.json();
-      const candidate = data.candidates?.[0];
-      if (!candidate?.content?.parts) {
-        if (data.promptFeedback?.blockReason) {
-          throw new Error(`Gemini blocked content: ${data.promptFeedback.blockReason}`);
+      try {
+        const headers: Record<string, string> = {
+          "Content-Type": "application/json",
+        };
+
+        if (authMode.isBearer) {
+          headers["Authorization"] = `Bearer ${cleanKey}`;
+        } else {
+          headers["x-goog-api-key"] = cleanKey;
         }
-        throw new Error("Gemini API returned an empty response candidate");
-      }
 
-      const resultText = candidate.content.parts
-        .map((p: any) => p.text || "")
-        .join("");
+        const res = await fetch(url, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(requestBody),
+        });
 
-      return resultText;
-    } catch (err: any) {
-      lastError = err;
-      if (customBase || (err.message && (err.message.includes("401") || err.message.includes("鉴权失败") || err.message.includes("API_KEY_INVALID")))) {
-        break; // don't try other models if credentials are fundamentally invalid
+        if (!res.ok) {
+          const errText = await res.text();
+          let errorDetail = errText;
+          try {
+            const jsonErr = JSON.parse(errText);
+            if (jsonErr.error?.message) {
+              errorDetail = jsonErr.error.message;
+            }
+          } catch (_) {}
+
+          // If auth mismatch, try next auth mode
+          if (errorDetail.includes("OAuth 2") || errorDetail.includes("ACCESS_TOKEN_TYPE_UNSUPPORTED")) {
+            break;
+          }
+
+          // If 401 Unauthorized or 400 API_KEY_INVALID, give a crystal clear message and stop trying
+          if (res.status === 401 || (res.status === 400 && (errorDetail.includes("API_KEY_INVALID") || errorDetail.includes("API key not valid")))) {
+            if (cleanKey.startsWith("AQ.") || cleanKey.startsWith("ya29.")) {
+              throw new Error(`Google Cloud Token 鉴权失败 (${res.status}): 填入的 AQ.Ab... 为临时 OAuth2 Access Token（有效期通常 1 小时）。建议前往 aistudio.google.com/app/apikey 获取永久有效的 AIzaSy... API Key。`);
+            }
+            throw new Error(`Google Gemini 鉴权失败 (${res.status}): API Key 无效或未开通权限。请在 Settings 设置中检查填入的 Google API Key 是否有效。`);
+          }
+
+          // If 404 (model not found), 503 (model overloaded), or 429 (quota / rate limit exceeded) and we have fallbacks, try next candidate
+          if ((res.status === 404 || res.status === 503 || res.status === 429) && modelsToTry.length > 1) {
+            lastError = new Error(`Gemini API (${res.status}) on ${model}: ${errorDetail}`);
+            console.warn(`Gemini model ${model} returned status ${res.status}, failing over to next candidate...`);
+            continue;
+          }
+
+          if (res.status === 429) {
+            throw new Error(`Gemini API 额度超限 (429 RESOURCE_EXHAUSTED)：该 API Key 当前调用频次或免费额度已达上限，建议稍等片刻重试或在 Settings 设置中切换模型/服务商。`);
+          }
+
+          throw new Error(`Gemini API Error (${res.status}): ${errorDetail}`);
+        }
+
+        const data = await res.json();
+        const candidate = data.candidates?.[0];
+        if (!candidate?.content?.parts) {
+          if (data.promptFeedback?.blockReason) {
+            throw new Error(`Gemini blocked content: ${data.promptFeedback.blockReason}`);
+          }
+          throw new Error("Gemini API returned an empty response candidate");
+        }
+
+        const resultText = candidate.content.parts
+          .map((p: any) => p.text || "")
+          .join("");
+
+        return resultText;
+      } catch (err: any) {
+        lastError = err;
+        if (customBase || (err.message && (err.message.includes("401") || err.message.includes("鉴权失败") || err.message.includes("API_KEY_INVALID")))) {
+          break; // don't try other models if credentials are fundamentally invalid
+        }
       }
     }
   }

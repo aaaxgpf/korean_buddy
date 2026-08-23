@@ -30,27 +30,41 @@ export interface DirectChatParams {
 }
 
 /**
- * Build correct Gemini generateContent URL with ?key= query parameter
- * This satisfies Google API Gateway requirement for browser API Key auth without OAuth2.
+ * Build correct Gemini generateContent URL based on auth mode
  */
-function buildGeminiUrl(baseURL: string | undefined, model: string, apiKey: string): string {
+function buildGeminiUrl(baseURL: string | undefined, model: string, apiKey: string, isBearerAuth: boolean): string {
   const defaultBase = 'https://generativelanguage.googleapis.com/v1beta';
   const cleanModel = (model || 'gemini-2.0-flash').replace(/^models\//, '');
   const cleanKey = apiKey.trim();
 
   if (baseURL && baseURL.trim()) {
     const baseClean = baseURL.trim().replace(/\/+$/, '');
-    if (baseClean.includes(':generateContent')) {
-      return baseClean.includes('?')
-        ? `${baseClean}&key=${encodeURIComponent(cleanKey)}`
-        : `${baseClean}?key=${encodeURIComponent(cleanKey)}`;
-    } else if (baseClean.includes('/models/')) {
-      return `${baseClean}:generateContent?key=${encodeURIComponent(cleanKey)}`;
+    if (isBearerAuth) {
+      // Bearer auth does not append ?key=
+      if (baseClean.includes(':generateContent')) {
+        return baseClean.split('?')[0];
+      } else if (baseClean.includes('/models/')) {
+        return `${baseClean}:generateContent`;
+      } else {
+        return `${baseClean}/models/${cleanModel}:generateContent`;
+      }
     } else {
-      return `${baseClean}/models/${cleanModel}:generateContent?key=${encodeURIComponent(cleanKey)}`;
+      // Standard API key auth appends ?key=
+      if (baseClean.includes(':generateContent')) {
+        return baseClean.includes('?')
+          ? `${baseClean}&key=${encodeURIComponent(cleanKey)}`
+          : `${baseClean}?key=${encodeURIComponent(cleanKey)}`;
+      } else if (baseClean.includes('/models/')) {
+        return `${baseClean}:generateContent?key=${encodeURIComponent(cleanKey)}`;
+      } else {
+        return `${baseClean}/models/${cleanModel}:generateContent?key=${encodeURIComponent(cleanKey)}`;
+      }
     }
   }
 
+  if (isBearerAuth) {
+    return `${defaultBase}/models/${cleanModel}:generateContent`;
+  }
   return `${defaultBase}/models/${cleanModel}:generateContent?key=${encodeURIComponent(cleanKey)}`;
 }
 
@@ -61,12 +75,15 @@ function formatLLMError(error: any, provider: string, apiKey: string): Error {
   const rawMsg = error?.message || String(error || '');
   const cleanKey = (apiKey || '').trim();
 
-  if (rawMsg.includes('invalid authentication credentials') || rawMsg.includes('Expected OAuth 2') || rawMsg.includes('API_KEY_INVALID') || rawMsg.includes('API key not valid') || rawMsg.includes('401')) {
+  if (rawMsg.includes('invalid authentication credentials') || rawMsg.includes('Expected OAuth 2') || rawMsg.includes('API_KEY_INVALID') || rawMsg.includes('API key not valid') || rawMsg.includes('401') || rawMsg.includes('UNAUTHENTICATED')) {
     if (provider === 'gemini' && cleanKey.startsWith('sk-')) {
       return new Error('Google 鉴权失败：您填入的 API Key 以 "sk-" 开头（这是 OpenAI / DeepSeek / 中转服务商的 Key 格式）。请在上方【LLM Provider】中切换为【OpenAI】、【DeepSeek】或【Custom (中转)】即可正常使用！');
     }
+    if (provider === 'gemini' && (cleanKey.startsWith('AQ.') || cleanKey.startsWith('ya29.'))) {
+      return new Error('Google Cloud Token 鉴权失败或已过期：您填入的 "AQ.Ab..." 或 "ya29..." 属于临时 OAuth2 Access Token（通常有效时长仅 1 小时）。建议前往 Google AI Studio (https://aistudio.google.com/app/apikey) 点击「Create API Key」生成永久有效的标准 API Key（通常以 AIzaSy 开头）。');
+    }
     if (provider === 'gemini') {
-      return new Error('Google Gemini API 鉴权失败：API Key 无效或未开通。请前往 Google AI Studio (https://aistudio.google.com/app/apikey) 免费创建并复制官方 API Key（通常以 AIzaSy 开头），或在上方切换为其他大模型服务商。');
+      return new Error('Google Gemini API 鉴权失败：API Key 无效或未开通。请前往 Google AI Studio (https://aistudio.google.com/app/apikey) 免费创建并复制官方 API Key（以 AIzaSy 开头），或在上方切换为其他大模型服务商。');
     }
     return new Error(`${provider.toUpperCase()} 鉴权失败 (401)：API Key 无效或已过期，请检查填入的 Key 是否正确。`);
   }
@@ -80,7 +97,7 @@ function formatLLMError(error: any, provider: string, apiKey: string): Error {
 
 /**
  * Direct Gemini Connection Test in Browser
- * Uses both ?key= query parameter AND x-goog-api-key header for bulletproof Google API gateway recognition.
+ * Automatically supports both standard API Keys (AIzaSy...) and OAuth Access Tokens (AQ.Ab... / ya29...)
  */
 export async function directTestGeminiConnection(config: DirectGeminiConfig): Promise<{ ok: boolean; message: string; raw?: any }> {
   const cleanKey = (config.apiKey || '').replace(/[^\x00-\x7F]/g, '').trim();
@@ -93,6 +110,12 @@ export async function directTestGeminiConnection(config: DirectGeminiConfig): Pr
     throw new Error('检测到您填入的 API Key 以 "sk-" 开头（属于 OpenAI / DeepSeek / 代理中转 Key 格式）。请在上方【LLM Provider】中切换为【OpenAI】、【DeepSeek】或【Custom (中转)】！');
   }
 
+  // Determine preferred auth strategy
+  const isLikelyOAuthToken = cleanKey.startsWith('AQ.') || cleanKey.startsWith('ya29.');
+  const authModes: Array<{ isBearer: boolean }> = isLikelyOAuthToken
+    ? [{ isBearer: true }, { isBearer: false }]
+    : [{ isBearer: false }, { isBearer: true }];
+
   // Model fallback chain: try user configured model first, fallback to stable public models
   const candidateModels = [
     config.model?.trim(),
@@ -102,54 +125,64 @@ export async function directTestGeminiConnection(config: DirectGeminiConfig): Pr
     'gemini-1.5-pro'
   ].filter(Boolean) as string[];
 
-  // Deduplicate candidate models
   const uniqueCandidates = Array.from(new Set(candidateModels));
 
   let lastError: any = null;
 
-  for (const modelName of uniqueCandidates) {
-    const url = buildGeminiUrl(config.baseURL, modelName, cleanKey);
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      'x-goog-api-key': cleanKey
-    };
+  for (const authMode of authModes) {
+    for (const modelName of uniqueCandidates) {
+      const url = buildGeminiUrl(config.baseURL, modelName, cleanKey, authMode.isBearer);
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json'
+      };
 
-    try {
-      const response = await fetch(url, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          contents: [
-            {
-              role: 'user',
-              parts: [{ text: 'Hello' }]
-            }
-          ]
-        })
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        const replyText = data.candidates?.[0]?.content?.parts?.[0]?.text || '안녕하세요! API 연결이 성공적으로 완료되었습니다.';
-        return {
-          ok: true,
-          message: `连接成功！已通过模型 [${modelName}] 成功响应。`,
-          raw: replyText
-        };
+      if (authMode.isBearer) {
+        headers['Authorization'] = `Bearer ${cleanKey}`;
       } else {
-        const errData = await response.json().catch(() => ({}));
-        const errMsg = errData?.error?.message || `HTTP ${response.status}`;
-        lastError = new Error(errMsg);
-
-        // If custom baseURL is set, do not cycle through standard google endpoints
-        if (config.baseURL?.trim()) {
-          throw formatLLMError(lastError, 'gemini', cleanKey);
-        }
+        headers['x-goog-api-key'] = cleanKey;
       }
-    } catch (e: any) {
-      lastError = e;
-      if (config.baseURL?.trim()) {
-        throw formatLLMError(e, 'gemini', cleanKey);
+
+      try {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            contents: [
+              {
+                role: 'user',
+                parts: [{ text: 'Hello' }]
+              }
+            ]
+          })
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          const replyText = data.candidates?.[0]?.content?.parts?.[0]?.text || '안녕하세요! API 연결이 성공적으로 완료되었습니다.';
+          return {
+            ok: true,
+            message: `连接成功！已通过模型 [${modelName}] 成功响应。`,
+            raw: replyText
+          };
+        } else {
+          const errData = await response.json().catch(() => ({}));
+          const errMsg = errData?.error?.message || `HTTP ${response.status}`;
+          lastError = new Error(errMsg);
+
+          // If auth mode doesn't match, break to try the alternative authMode
+          if (errMsg.includes('OAuth 2') || errMsg.includes('ACCESS_TOKEN_TYPE_UNSUPPORTED') || response.status === 401) {
+            break;
+          }
+
+          if (config.baseURL?.trim()) {
+            throw formatLLMError(lastError, 'gemini', cleanKey);
+          }
+        }
+      } catch (e: any) {
+        lastError = e;
+        if (config.baseURL?.trim()) {
+          throw formatLLMError(e, 'gemini', cleanKey);
+        }
       }
     }
   }
@@ -423,76 +456,93 @@ ${pinnedMemoriesSection}
     contents.push({ role, parts });
   }
 
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    'x-goog-api-key': cleanKey
-  };
+  // Determine preferred auth strategy
+  const isLikelyOAuthToken = cleanKey.startsWith('AQ.') || cleanKey.startsWith('ya29.');
+  const authModes: Array<{ isBearer: boolean }> = isLikelyOAuthToken
+    ? [{ isBearer: true }, { isBearer: false }]
+    : [{ isBearer: false }, { isBearer: true }];
 
   let lastError: any = null;
 
-  for (const modelToUse of candidateModels) {
-    const url = buildGeminiUrl(params.baseURL, modelToUse, cleanKey);
+  for (const authMode of authModes) {
+    for (const modelToUse of candidateModels) {
+      const url = buildGeminiUrl(params.baseURL, modelToUse, cleanKey, authMode.isBearer);
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json'
+      };
 
-    try {
-      const response = await fetch(url, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          contents,
-          systemInstruction: {
-            parts: [{ text: systemPrompt }]
-          },
-          generationConfig: {
-            responseMimeType: 'application/json',
-            temperature: 0.85
-          }
-        })
-      });
-
-      if (!response.ok) {
-        const errData = await response.json().catch(() => ({}));
-        const errMsg = errData?.error?.message || `HTTP ${response.status}`;
-        lastError = new Error(errMsg);
-
-        // If custom baseURL is set, do not cycle through standard google endpoints
-        if (params.baseURL?.trim()) {
-          throw formatLLMError(lastError, 'gemini', cleanKey);
-        }
-        continue;
+      if (authMode.isBearer) {
+        headers['Authorization'] = `Bearer ${cleanKey}`;
+      } else {
+        headers['x-goog-api-key'] = cleanKey;
       }
-
-      const data = await response.json();
-      const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
 
       try {
-        const parsed = JSON.parse(rawText);
-        return {
-          korean_text: parsed.korean_text || parsed.korean || '',
-          korean: parsed.korean_text || parsed.korean || '',
-          translation_text: parsed.translation_text || parsed.translation_zh || '',
-          translation_zh: parsed.translation_text || parsed.translation_zh || '',
-          translation_en: parsed.translation_en || '',
-          tts_audio_text: parsed.tts_audio_text || parsed.korean_text || '',
-          vocabulary: Array.isArray(parsed.vocabulary) ? parsed.vocabulary : [],
-          grammar_points: Array.isArray(parsed.grammar_points) ? parsed.grammar_points : [],
-          learning_tip: parsed.learning_tip || ''
-        };
-      } catch {
-        return {
-          korean_text: rawText,
-          korean: rawText,
-          translation_text: '',
-          translation_zh: '',
-          tts_audio_text: rawText,
-          vocabulary: [],
-          grammar_points: [],
-          learning_tip: ''
-        };
-      }
-    } catch (e: any) {
-      lastError = e;
-      if (params.baseURL?.trim()) {
-        throw formatLLMError(e, 'gemini', cleanKey);
+        const response = await fetch(url, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            contents,
+            systemInstruction: {
+              parts: [{ text: systemPrompt }]
+            },
+            generationConfig: {
+              responseMimeType: 'application/json',
+              temperature: 0.85
+            }
+          })
+        });
+
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          const errMsg = errData?.error?.message || `HTTP ${response.status}`;
+          lastError = new Error(errMsg);
+
+          // If auth mode mismatch, break inner model loop to try the other auth mode
+          if (errMsg.includes('OAuth 2') || errMsg.includes('ACCESS_TOKEN_TYPE_UNSUPPORTED') || response.status === 401) {
+            break;
+          }
+
+          // If custom baseURL is set, do not cycle through standard google endpoints
+          if (params.baseURL?.trim()) {
+            throw formatLLMError(lastError, 'gemini', cleanKey);
+          }
+          continue;
+        }
+
+        const data = await response.json();
+        const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+        try {
+          const parsed = JSON.parse(rawText);
+          return {
+            korean_text: parsed.korean_text || parsed.korean || '',
+            korean: parsed.korean_text || parsed.korean || '',
+            translation_text: parsed.translation_text || parsed.translation_zh || '',
+            translation_zh: parsed.translation_text || parsed.translation_zh || '',
+            translation_en: parsed.translation_en || '',
+            tts_audio_text: parsed.tts_audio_text || parsed.korean_text || '',
+            vocabulary: Array.isArray(parsed.vocabulary) ? parsed.vocabulary : [],
+            grammar_points: Array.isArray(parsed.grammar_points) ? parsed.grammar_points : [],
+            learning_tip: parsed.learning_tip || ''
+          };
+        } catch {
+          return {
+            korean_text: rawText,
+            korean: rawText,
+            translation_text: '',
+            translation_zh: '',
+            tts_audio_text: rawText,
+            vocabulary: [],
+            grammar_points: [],
+            learning_tip: ''
+          };
+        }
+      } catch (e: any) {
+        lastError = e;
+        if (params.baseURL?.trim()) {
+          throw formatLLMError(e, 'gemini', cleanKey);
+        }
       }
     }
   }

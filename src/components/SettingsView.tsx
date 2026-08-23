@@ -509,6 +509,16 @@ export const SettingsView: React.FC<Props> = ({
                     <span>✨ 留空时系统将使用内置免费通道畅聊</span>
                   </p>
                 )}
+                {Boolean(llmConfig.apiKey) && (llmConfig.apiKey.startsWith('AQ.') || llmConfig.apiKey.startsWith('ya29.')) && (
+                  <div className="text-[11px] text-blue-900 bg-blue-50 p-2.5 rounded-xl border border-blue-200 space-y-1">
+                    <p className="font-semibold flex items-center gap-1">
+                      <span>ℹ️ 识别为 Google Cloud 临时 OAuth 令牌 ({llmConfig.apiKey.slice(0, 8)}...)：</span>
+                    </p>
+                    <p className="text-[10.5px] leading-relaxed text-blue-800">
+                      系统已为您自动启用 Bearer 认证模式。注意：此类令牌通常为临时凭证（有效期约 1 小时）。若需长期稳定使用，建议前往 Google AI Studio 点击「Create API key」获取永久 Key（以 <code className="bg-blue-100 px-1 py-0.5 rounded font-mono">AIzaSy...</code> 开头）。
+                    </p>
+                  </div>
+                )}
                 {Boolean(llmConfig.apiKey) && llmConfig.apiKey.startsWith('sk-') && (
                   <div className="text-[11px] text-amber-800 bg-amber-50 p-2.5 rounded-xl border border-amber-200 space-y-1.5">
                     <p className="font-semibold flex items-center gap-1">
