@@ -971,29 +971,30 @@ export const SettingsView: React.FC<Props> = ({
 
       {/* SECTION 5: Language Settings */}
       <div className="bg-white p-6 rounded-2xl shadow-xs border border-stone-200 space-y-4">
-        <div className="flex items-center gap-2 text-stone-800 font-bold mb-2">
-          <Globe size={20} className="text-blue-600" />
-          <span>Bilingual Translation Mode</span>
+        <div className="flex items-center gap-2 text-stone-800 font-semibold mb-1">
+          <Globe size={20} className="text-slate-500" />
+          <span className="text-sm">Translation Target Language (翻译目标语言)</span>
         </div>
-        <div className="flex bg-stone-100 p-1 rounded-xl">
-          <button
-            type="button"
-            onClick={() => onUpdateSettings({...settings, languageMode: 'bilingual'})}
-            className={`flex-1 py-2 text-xs font-bold rounded-lg transition-colors cursor-pointer ${settings.languageMode === 'bilingual' ? 'bg-white shadow-xs text-stone-900' : 'text-stone-500 hover:text-stone-700'}`}
-          >
-            Bilingual (韩文+中文)
-          </button>
+        <div className="flex bg-neutral-100 p-1 rounded-xl">
           <button
             type="button"
             onClick={() => onUpdateSettings({...settings, languageMode: 'zh'})}
-            className={`flex-1 py-2 text-xs font-bold rounded-lg transition-colors cursor-pointer ${settings.languageMode === 'zh' ? 'bg-white shadow-xs text-stone-900' : 'text-stone-500 hover:text-stone-700'}`}
+            className={`flex-1 py-2 text-xs rounded-lg transition-all duration-200 cursor-pointer ${
+              settings.languageMode === 'zh'
+                ? 'bg-white shadow-sm text-neutral-900 font-medium'
+                : 'text-neutral-400 hover:text-neutral-600 font-normal'
+            }`}
           >
-            Simplified Chinese
+            简体中文 (Simplified Chinese)
           </button>
           <button
             type="button"
             onClick={() => onUpdateSettings({...settings, languageMode: 'en'})}
-            className={`flex-1 py-2 text-xs font-bold rounded-lg transition-colors cursor-pointer ${settings.languageMode === 'en' ? 'bg-white shadow-xs text-stone-900' : 'text-stone-500 hover:text-stone-700'}`}
+            className={`flex-1 py-2 text-xs rounded-lg transition-all duration-200 cursor-pointer ${
+              settings.languageMode === 'en'
+                ? 'bg-white shadow-sm text-neutral-900 font-medium'
+                : 'text-neutral-400 hover:text-neutral-600 font-normal'
+            }`}
           >
             English
           </button>

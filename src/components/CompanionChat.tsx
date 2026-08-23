@@ -1205,22 +1205,26 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
                                   Collapse
                                 </button>
                               </div>
-                              <div className="grid grid-cols-1 gap-1.5">
+                              <div className="flex flex-col">
                                 {msg.vocabulary.map((v, i) => {
                                   const isSaved = savedVocabIds.has(v.hangul || v.word);
                                   return (
                                     <div
                                       key={i}
-                                      className="p-2.5 rounded-xl bg-stone-50/80 flex items-center justify-between gap-2"
+                                      className={`py-3 flex items-start justify-between gap-4 font-sans ${
+                                        i < msg.vocabulary.length - 1 ? 'border-b border-black/[0.04]' : ''
+                                      }`}
                                     >
-                                      <div>
-                                        <div className="flex items-center gap-2">
-                                          <span className="text-stone-900 font-medium text-xs">{v.hangul || v.word}</span>
-                                          <span className="text-[10px] px-1.5 py-0.2 rounded bg-stone-200 text-stone-600">
-                                            {v.type}
-                                          </span>
+                                      <div className="flex-1 min-w-0">
+                                        <div className="flex items-baseline">
+                                          <span className="text-slate-800 font-normal text-sm">{v.hangul || v.word}</span>
+                                          {v.type && (
+                                            <span className="text-[11px] text-slate-400 font-light ml-1.5">
+                                              · {v.type}
+                                            </span>
+                                          )}
                                         </div>
-                                        <p className="text-[11px] text-stone-600 mt-0.5">
+                                        <p className="text-[13px] text-slate-600 font-normal mt-1.5 leading-normal">
                                           {languageMode === 'en' ? v.meaning_en : v.meaning_zh}
                                         </p>
                                       </div>
@@ -1237,14 +1241,10 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
                                           level: 'Daily',
                                           isBookmarked: true,
                                         })}
-                                        className={`p-1.5 rounded-lg transition-colors ${
-                                          isSaved
-                                            ? 'bg-amber-100 text-amber-900'
-                                            : 'bg-white text-stone-400 hover:text-stone-800'
-                                        }`}
+                                        className="p-1 text-slate-300 hover:text-slate-600 transition-colors shrink-0 mt-0.5"
                                         title="Save to Notebook"
                                       >
-                                        <Bookmark className={`w-3 h-3 ${isSaved ? 'fill-amber-600 text-amber-600' : ''}`} />
+                                        <Bookmark className={`w-4 h-4 transition-colors ${isSaved ? 'fill-slate-600 text-slate-600' : 'text-slate-300 hover:text-slate-600'}`} />
                                       </button>
                                     </div>
                                   );

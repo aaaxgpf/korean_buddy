@@ -534,32 +534,45 @@ export const DailyStudySessionView: React.FC<Props> = ({
                     </button>
                   </div>
 
-                  <div className="grid grid-cols-1 gap-2.5">
+                  <div className="flex flex-col">
                     {currentDayData.stage2_vocab.map((v, i) => (
-                      <div key={i} className="p-3.5 bg-[#F4F4F6] rounded-[6px] border border-stone-200 flex items-center justify-between gap-4">
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <span className="text-base font-bold text-stone-900">{v.hangul || v.word}</span>
-                            <span className="text-[10px] px-1.5 py-0.5 rounded-[4px] bg-white border border-stone-200 text-stone-700">{v.type || 'Word'}</span>
+                      <div
+                        key={i}
+                        className={`py-4 flex items-start justify-between gap-4 ${
+                          i < currentDayData.stage2_vocab.length - 1 ? 'border-b border-black/[0.04]' : ''
+                        }`}
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-baseline">
+                            <span className="text-slate-800 font-normal text-base">{v.hangul || v.word}</span>
+                            {v.type && (
+                              <span className="text-xs text-slate-400 font-light ml-2">
+                                · {v.type}
+                              </span>
+                            )}
                           </div>
-                          <p className="text-xs text-stone-800 font-medium">{v.meaning_zh}</p>
+                          <p className="text-sm text-slate-600 font-normal mt-1.5">{v.meaning_zh}</p>
                           {v.example_kr && (
-                            <p className="text-[11px] text-stone-500 mt-0.5">例: {v.example_kr} ({v.example_zh})</p>
+                            <p className="text-xs text-slate-400 font-light mt-1">
+                              例: {v.example_kr} ({v.example_zh})
+                            </p>
                           )}
                         </div>
 
-                        <div className="flex items-center gap-1.5 shrink-0">
+                        <div className="flex items-center gap-2 shrink-0 pt-0.5">
                           <button
                             onClick={() => speakKorean(v.hangul || v.word)}
-                            className="p-1.5 rounded-[6px] bg-white border border-stone-200 text-stone-600 hover:text-stone-900"
+                            className="p-1 text-slate-300 hover:text-slate-600 transition-colors"
+                            title="Pronunciation"
                           >
-                            <Volume2 size={14} />
+                            <Volume2 className="w-4 h-4" />
                           </button>
                           <button
                             onClick={() => onSaveVocab(v)}
-                            className="p-1.5 rounded-[6px] bg-white border border-stone-200 text-stone-600 hover:text-stone-900"
+                            className="p-1 text-slate-300 hover:text-slate-600 transition-colors"
+                            title="Save"
                           >
-                            <Bookmark size={14} />
+                            <Bookmark className="w-4 h-4 text-slate-300 hover:text-slate-600" />
                           </button>
                         </div>
                       </div>

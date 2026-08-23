@@ -240,61 +240,57 @@ export const NotebookView: React.FC<NotebookViewProps> = ({
               <p>Vocab还是Empty的。在聊天或words汇库中点击加号/书签即可保存！</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {savedVocab.map((item) => (
+            <div className="bg-white border border-[#E0DED7] rounded-2xl p-6 shadow-xs flex flex-col">
+              {savedVocab.map((item, i) => (
                 <div
                   key={item.id}
-                  className="bg-white border border-[#E0DED7] rounded-2xl p-5 shadow-sm space-y-3 flex flex-col justify-between font-sans"
+                  className={`py-4 flex items-start justify-between gap-4 font-sans ${
+                    i < savedVocab.length - 1 ? 'border-b border-black/[0.04]' : ''
+                  }`}
                 >
-                  <div className="space-y-2">
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <h4 className="text-xl font-sans-kr font-bold text-[#1A1A1A]">
-                            {item.hangul || item.word}
-                          </h4>
-                          {item.hanja_or_root && (
-                            <span className="text-xs text-[#8B7E74]">({item.hanja_or_root})</span>
-                          )}
-                        </div>
-                        <span className="text-[10px] px-2 py-0.5 rounded bg-[#FAF9F6] border border-[#E0DED7] text-[#71675E]">
-                          {item.type}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-baseline flex-wrap gap-1.5">
+                      <span className="text-slate-800 font-normal text-base">{item.hangul || item.word}</span>
+                      {item.hanja_or_root && (
+                        <span className="text-xs text-slate-400 font-light">({item.hanja_or_root})</span>
+                      )}
+                      {item.type && (
+                        <span className="text-xs text-slate-400 font-light">
+                          · {item.type}
                         </span>
-                      </div>
-
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          onClick={() => speakKorean(item.hangul || item.word)}
-                          className="p-1.5 rounded-lg bg-[#FAF9F6] hover:bg-[#F5F2ED] border border-[#E0DED7] text-[#71675E]"
-                          title="Pronunciation"
-                        >
-                          <Volume2 className="w-4 h-4 text-[#8B7E74]" />
-                        </button>
-                        <button
-                          onClick={() => onRemoveVocab(item.id)}
-                          className="p-1.5 rounded-lg bg-[#FAF9F6] hover:bg-red-50 border border-[#E0DED7] text-[#71675E] hover:text-red-700"
-                          title="Remove from Notebook"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="text-xs space-y-1">
-                      <p className="text-[#2D2D2D] font-medium">{item.meaning_zh}</p>
-                      {item.meaning_en && (
-                        <p className="text-[#71675E]">{item.meaning_en}</p>
                       )}
                     </div>
+                    
+                    <p className="text-sm text-slate-600 font-normal mt-1.5">{item.meaning_zh}</p>
+                    {item.meaning_en && (
+                      <p className="text-xs text-slate-400 font-normal mt-0.5">{item.meaning_en}</p>
+                    )}
 
                     {item.example_kr && (
-                      <div className="p-2.5 rounded-xl bg-[#FAF9F6] border border-[#E0DED7] text-[11px] space-y-0.5">
-                        <p className="text-[#1A1A1A] font-sans-kr font-medium">Ex: {item.example_kr}</p>
+                      <div className="mt-2 text-xs text-slate-500 font-light space-y-0.5">
+                        <p className="font-medium text-slate-700">例: {item.example_kr}</p>
                         {item.example_zh && (
-                          <p className="text-[#71675E]">{item.example_zh}</p>
+                          <p className="text-slate-400">{item.example_zh}</p>
                         )}
                       </div>
                     )}
+                  </div>
+
+                  <div className="flex items-center gap-2.5 shrink-0 pt-1">
+                    <button
+                      onClick={() => speakKorean(item.hangul || item.word)}
+                      className="p-1 text-slate-300 hover:text-slate-600 transition-colors"
+                      title="Pronunciation"
+                    >
+                      <Volume2 className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => onRemoveVocab(item.id)}
+                      className="p-1 text-slate-300 hover:text-red-500 transition-colors"
+                      title="Remove from Notebook"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
                 </div>
               ))}

@@ -68,7 +68,7 @@ export const CompanionProfileModal: React.FC<Props> = ({ isOpen, onClose, compan
     }
   };
 
-  const currentNotes = editingCompanion.customNotes || '';
+  const currentNotes = editingCompanion.customNotes ?? '';
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-stone-900/80 backdrop-blur-sm sm:p-6 animate-in fade-in duration-200">
@@ -138,7 +138,7 @@ export const CompanionProfileModal: React.FC<Props> = ({ isOpen, onClose, compan
             <div>
               <label className="block text-xs font-semibold text-stone-700 mb-1.5">Persona & Custom Notes (专属人设与个性化提示)</label>
               <textarea 
-                value={currentNotes}
+                value={editingCompanion.customNotes ?? ''}
                 onChange={e => {
                   const val = e.target.value;
                   setEditingCompanion({
@@ -147,7 +147,7 @@ export const CompanionProfileModal: React.FC<Props> = ({ isOpen, onClose, compan
                   });
                 }}
                 className="w-full p-2.5 px-3 text-xs rounded-xl border border-stone-200 bg-stone-50/70 focus:bg-white focus:border-stone-900 focus:ring-1 focus:ring-stone-900 outline-none transition-all resize-none h-20 leading-relaxed"
-                placeholder="输入你与他的专属关系设定（如：大学学长、青梅竹马、秘密交往中等）..."
+                placeholder="在此输入你与他的专属关系或个性化补充设定（默认为空，不填则按官方原人设对话）..."
               />
             </div>
 

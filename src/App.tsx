@@ -39,7 +39,7 @@ export default function App() {
       const saved = localStorage.getItem('korean_app_settings');
       if (saved) return JSON.parse(saved);
     } catch (e) {}
-    return { theme: 'default', dailyVocabGoal: 20, languageMode: 'en' };
+    return { theme: 'default', dailyVocabGoal: 20, languageMode: 'zh' };
   });
 
   useEffect(() => {
@@ -161,7 +161,7 @@ export default function App() {
       return merged;
     } catch (e) {
       console.error('Failed to initialize companions state', e);
-      return PRESET_COMPANIONS;
+      return PRESET_COMPANIONS.map(p => ({ ...p, customNotes: '' }));
     }
   });
 
@@ -759,16 +759,15 @@ export default function App() {
             {/* Left pane: Friends list */}
             <div className={`h-full shrink-0 w-full md:w-80 flex-col border-r border-stone-200/60 bg-transparent overflow-y-auto pb-32 md:pb-0 ${chatView === 'chat' ? 'hidden md:flex' : 'flex'}`}>
               <div className="px-4 py-6">
-                 <div className="flex items-center justify-between mb-6">
-                   <h2 className="text-2xl sm:text-3xl font-medium tracking-tight text-stone-900 font-sans">Friends</h2>
+                 <div className="flex items-center justify-between mb-4">
+                   <h2 className="text-xl font-semibold tracking-tight text-neutral-900 font-sans">Friends</h2>
                    <button
                      type="button"
                      onClick={() => setIsCreateCompanionModalOpen(true)}
-                     className="px-2.5 py-1.5 bg-stone-900 hover:bg-stone-800 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition shadow-xs cursor-pointer"
+                     className="text-slate-400 hover:text-neutral-700 hover:bg-black/[0.04] p-1.5 rounded-full transition-colors cursor-pointer"
                      title="添加自定义好友"
                    >
-                     <UserPlus size={13} />
-                     <span>添加好友</span>
+                     <UserPlus className="w-5 h-5" />
                    </button>
                  </div>
                  

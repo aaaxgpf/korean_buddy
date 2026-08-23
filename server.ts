@@ -472,7 +472,7 @@ async function executeUniversalLLM(params: {
 
       const data = await res.json();
       return data.content?.[0]?.text || '';
-    } else if (provider === 'openai' || provider === 'deepseek' || (provider === 'custom' && !baseURL?.includes('generativelanguage.googleapis.com/v1beta/models'))) {
+    } else if (provider === 'openai' || provider === 'deepseek' || (provider === 'custom' && !baseURL?.includes('generativelanguage.googleapis.com'))) {
       const defaultEndpoint = provider === 'deepseek'
         ? 'https://api.deepseek.com/v1/chat/completions'
         : 'https://api.openai.com/v1/chat/completions';
