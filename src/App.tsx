@@ -137,12 +137,15 @@ export default function App() {
       for (const preset of PRESET_COMPANIONS) {
         const override = overridesMap.get(preset.id);
         if (override) {
+          const rawNotes = override.customNotes || '';
+          const isBasePersona = rawNotes === preset.persona || rawNotes === preset.system_prompt || rawNotes.includes('THE BOYZ 主 Rapper 金善旴') || rawNotes.includes('THE BOYZ 门面兼副主唱金泳勋') || rawNotes.includes('THE BOYZ 领唱李贤在') || rawNotes.includes('THE BOYZ 忙内 Eric') || rawNotes.includes('RIIZE 主舞将太郎') || rawNotes.includes('TWS 队长申惟') || rawNotes.includes('RIIZE 门面兼 Rapper 郑成灿');
+
           merged.push({
             ...preset,
             ...override,
             avatar: override.customAvatarUrl || preset.avatar,
             customAvatarUrl: override.customAvatarUrl,
-            customNotes: override.customNotes || '',
+            customNotes: isBasePersona ? '' : rawNotes,
             remark: override.remark || preset.remark || preset.name_ko,
             status_msg: override.status_msg || preset.status_msg,
             tts_pitch: override.tts_pitch !== undefined ? override.tts_pitch : preset.tts_pitch,

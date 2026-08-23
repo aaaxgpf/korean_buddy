@@ -21,9 +21,13 @@ export const CompanionProfileModal: React.FC<Props> = ({ isOpen, onClose, compan
 
   useEffect(() => {
     if (companion && isOpen) {
+      const rawNotes = companion.customNotes || '';
+      // If customNotes was previously stored matching the base preset persona or system_prompt, clean it to empty
+      const isBasePersona = rawNotes === companion.persona || rawNotes === companion.system_prompt || rawNotes.includes('THE BOYZ 主 Rapper 金善旴') || rawNotes.includes('THE BOYZ 门面兼副主唱金泳勋') || rawNotes.includes('THE BOYZ 领唱李贤在') || rawNotes.includes('THE BOYZ 忙内 Eric') || rawNotes.includes('RIIZE 主舞将太郎') || rawNotes.includes('TWS 队长申惟') || rawNotes.includes('RIIZE 门面兼 Rapper 郑成灿');
+      
       setEditingCompanion({
         ...companion,
-        customNotes: companion.customNotes || '',
+        customNotes: isBasePersona ? '' : rawNotes,
       });
     }
   }, [companion, isOpen]);
@@ -136,7 +140,10 @@ export const CompanionProfileModal: React.FC<Props> = ({ isOpen, onClose, compan
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-stone-700 mb-1.5">Persona & Custom Notes (专属人设与个性化提示)</label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-xs font-semibold text-stone-700">Custom Notes & Added Persona (专属补充设定)</label>
+                <span className="text-[10px] text-stone-400">原官方人设已内置生效</span>
+              </div>
               <textarea 
                 value={editingCompanion.customNotes ?? ''}
                 onChange={e => {
@@ -147,7 +154,7 @@ export const CompanionProfileModal: React.FC<Props> = ({ isOpen, onClose, compan
                   });
                 }}
                 className="w-full p-2.5 px-3 text-xs rounded-xl border border-stone-200 bg-stone-50/70 focus:bg-white focus:border-stone-900 focus:ring-1 focus:ring-stone-900 outline-none transition-all resize-none h-20 leading-relaxed"
-                placeholder="在此输入你与他的专属关系或个性化补充设定（默认为空，不填则按官方原人设对话）..."
+                placeholder="在此输入为该角色补充的新增设定（如：专属互动暗号、新关系定位、特定小习惯等）。原设定已在后台作为基础底色，此处仅需填写新加设定，不填则完全遵循原人设。"
               />
             </div>
 

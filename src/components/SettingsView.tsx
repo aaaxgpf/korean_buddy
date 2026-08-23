@@ -25,7 +25,7 @@ import {
 import { AppSettings, UserProfile, LLMConfig, MiniMaxConfig, VoiceSlotConfig, Companion } from '../types';
 import { PRESET_COMPANIONS } from '../data/companions';
 import { speakKorean, stopSpeaking } from '../utils/audio';
-import { directTestGeminiConnection } from '../utils/geminiDirect';
+import { directTestLLMConnection } from '../utils/geminiDirect';
 import { UserProfileModal } from './UserProfileModal';
 import { CompanionAvatar } from './CompanionAvatar';
 
@@ -210,14 +210,34 @@ export const SettingsView: React.FC<Props> = ({
     setIsTestingLLM(true);
     setLlmTestStatus(null);
     try {
-      if (llmConfig.provider === 'gemini') {
-        const result = await directTestGeminiConnection({
-          apiKey: llmConfig.apiKey || '',
-          model: llmConfig.model,
-          baseURL: llmConfig.baseURL
-        });
-        setLlmTestStatus({ ok: true, message: result.message || '大模型已成功响应！' });
-        return;
+      if (llmConfig.apiKey?.trim()) {
+        try {
+          const result = await directTestLLMConnection({
+            provider: llmConfig.provider,
+            apiKey: llmConfig.apiKey || '',
+            model: llmConfig.model,
+            baseURL: llmConfig.baseURL
+          });
+          setLlmTestStatus({ ok: true, message: result.message || '大模型已成功响应！' });
+          return;
+        } catch (directErr: any) {
+          // If direct test fails due to CORS (e.g. some third-party proxies), try backend endpoint /api/test-llm if available
+          console.warn('Direct test warning, trying server proxy as fallback:', directErr);
+          const res = await fetch('/api/test-llm', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(llmConfig)
+          }).catch(() => null);
+
+          if (res && res.ok) {
+            const data = await res.json();
+            if (data.ok) {
+              setLlmTestStatus({ ok: true, message: data.message || '大模型已成功响应！' });
+              return;
+            }
+          }
+          throw directErr;
+        }
       }
 
       const res = await fetch('/api/test-llm', {

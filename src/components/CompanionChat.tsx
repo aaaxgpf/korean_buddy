@@ -24,7 +24,7 @@ import confetti from 'canvas-confetti';
 import { Companion, ChatMessage, VocabItem, CompanionSparkRecord, UserProfile } from '../types';
 import { CompanionAvatar } from './CompanionAvatar';
 import { speakKorean, stopSpeaking } from '../utils/audio';
-import { directSendGeminiChat } from '../utils/geminiDirect';
+import { directSendChat } from '../utils/geminiDirect';
 import { getTimeAwareGreeting } from '../data/companions';
 
 interface CompanionChatProps {
@@ -336,22 +336,51 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
         .map(m => m.role === 'user' ? `User: ${m.content}` : `${companion.name_kr || companion.name_ko || 'Idol'}: ${m.korean || m.content}`)
         .filter(Boolean);
 
-      if (apiConfig?.provider === 'gemini' && apiConfig?.apiKey?.trim()) {
-        data = await directSendGeminiChat({
-          apiKey: apiConfig.apiKey,
-          model: apiConfig.model,
-          baseURL: apiConfig.baseURL,
-          character: companion,
-          messages: [...contextMessages, userMessage],
-          pinnedMemories,
-          userName: effectiveUserName,
-          userCallSign: effectiveCallSign,
-          userNickname: companion.userNickname,
-          languageMode,
-          imageBase64: imagePayload || undefined,
-          imageMime: undefined,
-          clientTemporal
-        });
+      if (apiConfig?.apiKey?.trim()) {
+        try {
+          data = await directSendChat({
+            provider: apiConfig.provider,
+            apiKey: apiConfig.apiKey,
+            model: apiConfig.model,
+            baseURL: apiConfig.baseURL,
+            character: companion,
+            messages: [...contextMessages, userMessage],
+            pinnedMemories,
+            userName: effectiveUserName,
+            userCallSign: effectiveCallSign,
+            userNickname: companion.userNickname,
+            languageMode,
+            imageBase64: imagePayload || undefined,
+            imageMime: undefined,
+            clientTemporal
+          });
+        } catch (directErr: any) {
+          console.warn('Direct chat warning, trying backend endpoint as fallback:', directErr);
+          const res = await fetch('/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              character: companion,
+              messages: [...contextMessages, userMessage],
+              pinnedMemories,
+              userName: effectiveUserName,
+              userCallSign: effectiveCallSign,
+              userNickname: companion.userNickname,
+              languageMode,
+              imageBase64: imagePayload,
+              videoLink: videoData?.link,
+              videoInfo: videoData,
+              clientTemporal,
+              apiConfig,
+            }),
+          }).catch(() => null);
+
+          if (res && res.ok) {
+            data = await res.json();
+          } else {
+            throw directErr;
+          }
+        }
       } else {
         const res = await fetch('/api/chat', {
           method: 'POST',
@@ -499,20 +528,46 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
         .map(m => m.role === 'user' ? `User: ${m.content}` : `${companion.name_kr || companion.name_ko || 'Idol'}: ${m.korean || m.content}`)
         .filter(Boolean);
 
-      if (apiConfig?.provider === 'gemini' && apiConfig?.apiKey?.trim()) {
-        data = await directSendGeminiChat({
-          apiKey: apiConfig.apiKey,
-          model: apiConfig.model,
-          baseURL: apiConfig.baseURL,
-          character: companion,
-          messages: historyBefore.slice(-10),
-          pinnedMemories,
-          userName: effectiveUserName,
-          userCallSign: effectiveCallSign,
-          userNickname: companion.userNickname,
-          languageMode,
-          clientTemporal
-        });
+      if (apiConfig?.apiKey?.trim()) {
+        try {
+          data = await directSendChat({
+            provider: apiConfig.provider,
+            apiKey: apiConfig.apiKey,
+            model: apiConfig.model,
+            baseURL: apiConfig.baseURL,
+            character: companion,
+            messages: historyBefore.slice(-10),
+            pinnedMemories,
+            userName: effectiveUserName,
+            userCallSign: effectiveCallSign,
+            userNickname: companion.userNickname,
+            languageMode,
+            clientTemporal
+          });
+        } catch (directErr: any) {
+          console.warn('Direct regenerate warning, trying backend endpoint as fallback:', directErr);
+          const res = await fetch('/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              character: companion,
+              messages: historyBefore.slice(-10),
+              pinnedMemories,
+              userName: effectiveUserName,
+              userCallSign: effectiveCallSign,
+              userNickname: companion.userNickname,
+              languageMode,
+              clientTemporal,
+              apiConfig,
+            }),
+          }).catch(() => null);
+
+          if (res && res.ok) {
+            data = await res.json();
+          } else {
+            throw directErr;
+          }
+        }
       } else {
         const res = await fetch('/api/chat', {
           method: 'POST',
