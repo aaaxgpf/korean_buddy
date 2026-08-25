@@ -27,6 +27,7 @@ import { VocabItem, CustomLexiconBook, AISeedExpansionResult } from '../types';
 import { parsePDFLexicon, parseJSONLexicon, parseCSVLexicon, parseRawTextLexicon } from '../utils/lexiconParser';
 import { PRESET_CUSTOM_BOOKS } from '../data/presetLexicons';
 import { speakKorean } from '../utils/audio';
+import { notifyToast, formatApiErrorMessage } from '../utils/toast';
 
 interface Props {
   onImportWords: (newWords: VocabItem[], book: CustomLexiconBook) => void;
@@ -229,11 +230,23 @@ export const LexiconUploadCenter: React.FC<Props> = ({
         setCustomBooks(prev => prev.map(b => b.id === activeBook.id ? updatedBook : b));
         onImportWords(data.expandedItems, updatedBook);
         setSuccessBanner(`已基于种子词扩充 ${data.expandedItems.length} 个实战词条与练习例句。`);
+        notifyToast({
+          type: 'success',
+          title: '✨ 词书拓展完成',
+          message: `已成功基于《${activeBook.title}》扩充 ${data.expandedItems.length} 个核心生词与实战例句。`
+        });
         setTimeout(() => setSuccessBanner(null), 5000);
       }
     } catch (err: any) {
       console.error('AI expansion error:', err);
+      const { title, message } = formatApiErrorMessage(err, '词书智能扩充');
       setErrorMessage(`AI 扩充失败: ${err?.message || '服务暂时不可用'}`);
+      notifyToast({
+        type: 'warning',
+        title,
+        message,
+        duration: 5500
+      });
     } finally {
       setIsExpanding(false);
     }

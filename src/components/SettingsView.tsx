@@ -28,6 +28,7 @@ import { PRESET_COMPANIONS } from '../data/companions';
 import { speakKorean, stopSpeaking } from '../utils/audio';
 import { directTestLLMConnection } from '../utils/geminiDirect';
 import { UserProfileModal } from './UserProfileModal';
+import { notifyToast, showSuccessToast, showErrorToast, formatApiErrorMessage } from '../utils/toast';
 import { CompanionAvatar } from './CompanionAvatar';
 
 interface Props {
@@ -71,7 +72,7 @@ export const SettingsView: React.FC<Props> = ({
     } catch {
       // ignore
     }
-    return { provider: 'gemini', apiKey: '', baseURL: '', model: 'gemini-3.6-flash' };
+    return { provider: 'gemini', apiKey: '', baseURL: '', model: 'gemini-3.7-flash' };
   });
 
   // MiniMax State
@@ -221,15 +222,15 @@ export const SettingsView: React.FC<Props> = ({
       if (res) {
         const data = await res.json().catch(() => ({}));
         if (res.ok && data.ok) {
-          setLlmTestStatus({ ok: true, message: data.message || '大模型已成功响应！' });
-          return;
-        } else if (data.error && !data.error.includes('NO_API_KEY')) {
-          setLlmTestStatus({ ok: false, message: data.error });
+          const successMsg = data.message || '大模型已成功响应！';
+          setLlmTestStatus({ ok: true, message: successMsg });
+          showSuccessToast('✅ 大模型连接成功', successMsg);
           return;
         }
+        // If server proxy returned error, we do not abort immediately; continue to client direct test
       }
 
-      // 2. If server is not available or returned NO_API_KEY, fallback to client direct test
+      // 2. Client direct test (handles regional network routing & direct CORS enabled endpoints)
       if (llmConfig.apiKey?.trim()) {
         try {
           const result = await directTestLLMConnection({
@@ -238,16 +239,27 @@ export const SettingsView: React.FC<Props> = ({
             model: llmConfig.model,
             baseURL: llmConfig.baseURL
           });
-          setLlmTestStatus({ ok: true, message: result.message || '大模型已成功响应！' });
+          const successMsg = result.message || '大模型已成功响应！';
+          setLlmTestStatus({ ok: true, message: successMsg });
+          showSuccessToast('✅ 客户端直连测试成功', successMsg);
           return;
         } catch (directErr: any) {
           throw directErr;
         }
       }
 
-      setLlmTestStatus({ ok: false, message: '请先填入有效的 API Key 或配置服务商' });
+      const noKeyMsg = '请先填入有效的 API Key 或选择服务商';
+      setLlmTestStatus({ ok: false, message: noKeyMsg });
+      notifyToast({
+        type: 'warning',
+        title: '🔑 未填写 API Key',
+        message: noKeyMsg,
+      });
     } catch (err: any) {
-      setLlmTestStatus({ ok: false, message: err.message || '连接测试异常，请检查网络或 API Key' });
+      const errMsg = err.message || '连接测试异常，请检查网络或 API Key';
+      setLlmTestStatus({ ok: false, message: errMsg });
+      const { title, message } = formatApiErrorMessage(err, '连接测试');
+      showErrorToast(title, message);
     } finally {
       setIsTestingLLM(false);
     }
@@ -273,10 +285,10 @@ export const SettingsView: React.FC<Props> = ({
   // Provider presets
   const providerPresets: Record<string, { defaultModel: string; defaultBaseURL: string; placeholderKey: string; popularModels: string[] }> = {
     gemini: {
-      defaultModel: 'gemini-2.0-flash',
+      defaultModel: 'gemini-3.7-flash',
       defaultBaseURL: '',
       placeholderKey: 'AQ... 或 AIzaSy... (从 aistudio.google.com 创建)',
-      popularModels: ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-2.0-flash-lite', 'gemini-1.5-pro', 'gemini-2.5-flash']
+      popularModels: ['gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite', 'gemini-3.1-pro-preview']
     },
     anthropic: {
       defaultModel: 'claude-3-5-sonnet-20241022',
@@ -577,7 +589,11 @@ export const SettingsView: React.FC<Props> = ({
                   type="text"
                   autoComplete="off"
                   spellCheck={false}
-                  placeholder={llmConfig.provider === 'gemini' ? 'https://generativelanguage.googleapis.com (官方端点，留空即可)' : (providerPresets[llmConfig.provider]?.defaultBaseURL || 'https://api.openai.com/v1')}
+                  placeholder={
+                    llmConfig.provider === 'gemini' 
+                      ? '官方端点（默认留空即可）' 
+                      : (providerPresets[llmConfig.provider]?.defaultBaseURL || 'https://api.openai.com/v1')
+                  }
                   value={llmConfig.baseURL || ''}
                   onChange={(e) => handleUpdateLLMField('baseURL', e.target.value)}
                   onPaste={(e) => {
@@ -679,14 +695,43 @@ export const SettingsView: React.FC<Props> = ({
 
             {llmTestStatus && (
               <div
-                className={`flex-1 p-2.5 px-3 rounded-xl border text-xs flex items-center gap-2 ${
+                className={`flex-1 p-3 rounded-xl border text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 ${
                   llmTestStatus.ok
                     ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
                     : 'bg-rose-50 text-rose-800 border-rose-200'
                 }`}
               >
-                {llmTestStatus.ok ? <CheckCircle2 size={16} className="shrink-0 text-emerald-600" /> : <AlertCircle size={16} className="shrink-0 text-rose-600" />}
-                <span className="break-all font-medium">{llmTestStatus.message}</span>
+                <div className="flex items-start gap-2">
+                  {llmTestStatus.ok ? <CheckCircle2 size={16} className="shrink-0 text-emerald-600 mt-0.5" /> : <AlertCircle size={16} className="shrink-0 text-rose-600 mt-0.5" />}
+                  <span className="font-medium leading-relaxed">{llmTestStatus.message}</span>
+                </div>
+                {!llmTestStatus.ok && (
+                  <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+                    {Boolean(llmConfig.apiKey) && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleUpdateLLMField('apiKey', '');
+                          setLlmTestStatus(null);
+                        }}
+                        className="px-2.5 py-1 bg-white hover:bg-stone-100 text-stone-700 rounded-lg border border-stone-300 font-semibold text-[11px] cursor-pointer transition shadow-2xs"
+                      >
+                        清空 Key (使用预置环境)
+                      </button>
+                    )}
+                    {llmConfig.provider === 'gemini' && (
+                      <a
+                        href="https://aistudio.google.com/app/apikey"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-semibold text-[11px] cursor-pointer transition shadow-2xs inline-flex items-center gap-1"
+                      >
+                        <span>获取新 Key</span>
+                        <ExternalLink size={10} />
+                      </a>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </div>

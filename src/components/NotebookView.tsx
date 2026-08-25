@@ -202,15 +202,23 @@ export const NotebookView: React.FC<NotebookViewProps> = ({
                     {item.vocabulary && item.vocabulary.length > 0 && (
                       <div className="p-4 rounded-xl bg-[#FAF9F6] border border-[#E0DED7] space-y-2 text-xs">
                         <span className="text-[10px] font-bold text-[#B5A69A] uppercase tracking-wider block">
-                          包含重点words汇:
+                          包含重点词汇:
                         </span>
                         <div className="flex flex-wrap gap-2">
                           {item.vocabulary.map((v, vIdx) => (
                             <span
                               key={vIdx}
-                              className="px-2.5 py-1 rounded-lg bg-white border border-[#E0DED7] text-[#2D2D2D]"
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white border border-[#E0DED7] text-[#2D2D2D]"
                             >
-                              <strong className="font-sans-kr text-[#1A1A1A]">{v.hangul || v.word}</strong>: {v.meaning_zh}
+                              <strong className="font-sans-kr text-[#1A1A1A]">{v.hangul || v.word}</strong>: {languageMode === 'en' ? (v.meaning_en || v.meaning_zh) : v.meaning_zh}
+                              <button
+                                type="button"
+                                onClick={() => speakKorean(v.hangul || v.word)}
+                                className="text-stone-400 hover:text-stone-800 transition-colors p-0.5 cursor-pointer rounded hover:bg-stone-100"
+                                title="发音 (Pronounce)"
+                              >
+                                <Volume2 className="w-3 h-3" />
+                              </button>
                             </span>
                           ))}
                         </div>

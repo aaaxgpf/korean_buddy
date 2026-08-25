@@ -26,6 +26,7 @@ import { CompanionAvatar } from './CompanionAvatar';
 import { speakKorean, stopSpeaking } from '../utils/audio';
 import { directSendChat } from '../utils/geminiDirect';
 import { getTimeAwareGreeting } from '../data/companions';
+import { notifyToast, formatApiErrorMessage } from '../utils/toast';
 
 interface CompanionChatProps {
   theme?: 'default' | 'kkt' | 'wechat';
@@ -103,6 +104,7 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [speakingMsgId, setSpeakingMsgId] = useState<string | null>(null);
+  const [speakingVocabKey, setSpeakingVocabKey] = useState<string | null>(null);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   
@@ -465,6 +467,14 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
       const errMsg = err?.message || '无法连接到大模型服务器';
       const isAuthError = errMsg.includes('鉴权') || errMsg.includes('401') || errMsg.includes('API Key') || errMsg.includes('NO_API_KEY') || errMsg.includes('OAuth 2');
 
+      const { title, message } = formatApiErrorMessage(err, '伴学对话');
+      notifyToast({
+        type: isAuthError ? 'warning' : 'error',
+        title,
+        message,
+        duration: 6000
+      });
+
       const networkErrMessage: ChatMessage = {
         id: `err_${Date.now()}`,
         role: 'assistant',
@@ -637,6 +647,7 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
       return;
     }
     setSpeakingMsgId(msgId);
+    setSpeakingVocabKey(null);
     speakKorean(text, {
       gender: companion.gender === 'male' ? 'male' : 'female',
       characterId: companion.id,
@@ -648,6 +659,29 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
       onError: (err) => {
         console.warn('speakKorean error:', err);
         setSpeakingMsgId(null);
+      }
+    });
+  };
+
+  const playVocabAudio = (word: string, vocabKey: string) => {
+    if (speakingVocabKey === vocabKey) {
+      stopSpeaking();
+      setSpeakingVocabKey(null);
+      return;
+    }
+    setSpeakingVocabKey(vocabKey);
+    setSpeakingMsgId(null);
+    speakKorean(word, {
+      gender: companion.gender === 'male' ? 'male' : 'female',
+      characterId: companion.id,
+      rate: 0.9,
+      pitch: 1.0,
+      onEnd: () => {
+        setSpeakingVocabKey(null);
+      },
+      onError: (err) => {
+        console.warn('speakKorean vocab error:', err);
+        setSpeakingVocabKey(null);
       }
     });
   };
@@ -1284,45 +1318,81 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
                               </div>
                               <div className="flex flex-col">
                                 {msg.vocabulary.map((v, i) => {
-                                  const isSaved = savedVocabIds.has(v.hangul || v.word);
+                                  const wordText = v.hangul || v.word;
+                                  const isSaved = savedVocabIds.has(wordText);
+                                  const vocabKey = `${msg.id}_vocab_${i}_${wordText}`;
+                                  const isSpeakingThis = speakingVocabKey === vocabKey;
+
                                   return (
                                     <div
                                       key={i}
-                                      className={`py-2.5 flex items-start justify-between gap-4 font-sans ${
+                                      className={`py-2.5 flex items-start justify-between gap-3 font-sans ${
                                         i < msg.vocabulary.length - 1 ? 'border-b border-black/[0.04]' : ''
                                       }`}
                                     >
                                       <div className="flex-1 min-w-0">
-                                        <div className="flex items-baseline">
-                                          <span className="text-slate-900 font-medium text-sm">{v.hangul || v.word}</span>
+                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                          <span className="text-slate-900 font-medium text-sm">{wordText}</span>
                                           {v.type && (
-                                            <span className="text-[11px] text-slate-400 font-light ml-1.5">
+                                            <span className="text-[11px] text-slate-400 font-light">
                                               · {v.type}
                                             </span>
                                           )}
+                                          <button
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              playVocabAudio(wordText, vocabKey);
+                                            }}
+                                            className={`p-1 rounded-full transition-all cursor-pointer inline-flex items-center justify-center ${
+                                              isSpeakingThis
+                                                ? 'bg-stone-900 text-white shadow-xs animate-pulse'
+                                                : 'text-stone-400 hover:text-stone-800 hover:bg-stone-100'
+                                            }`}
+                                            title="发音 (Pronounce)"
+                                          >
+                                            <Volume2 className="w-3.5 h-3.5" />
+                                          </button>
                                         </div>
                                         <p className="text-[13px] text-slate-600 font-normal mt-1 leading-normal">
                                           {languageMode === 'en' ? v.meaning_en : v.meaning_zh}
                                         </p>
                                       </div>
-                                      <button
-                                        onClick={() => onSaveVocab({
-                                          id: `v_${v.hangul}_${Date.now()}`,
-                                          word: v.hangul || v.word,
-                                          hangul: v.hangul || v.word,
-                                          type: v.type,
-                                          meaning_zh: v.meaning_zh,
-                                          meaning_en: v.meaning_en,
-                                          example_kr: v.example,
-                                          category: 'Extracted from Chat',
-                                          level: 'Daily',
-                                          isBookmarked: true,
-                                        })}
-                                        className="p-1 text-slate-300 hover:text-slate-600 transition-colors shrink-0 mt-0.5"
-                                        title="Save to Notebook"
-                                      >
-                                        <Bookmark className={`w-4 h-4 transition-colors ${isSaved ? 'fill-slate-700 text-slate-700' : 'text-slate-300 hover:text-slate-600'}`} />
-                                      </button>
+                                      <div className="flex items-center gap-1 shrink-0 mt-0.5">
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            playVocabAudio(wordText, vocabKey);
+                                          }}
+                                          className={`p-1.5 rounded-lg transition-all cursor-pointer ${
+                                            isSpeakingThis
+                                              ? 'bg-stone-900 text-white shadow-xs'
+                                              : 'text-stone-400 hover:text-stone-800 hover:bg-stone-100'
+                                          }`}
+                                          title="发音 (Pronounce)"
+                                        >
+                                          <Volume2 className="w-3.5 h-3.5" />
+                                        </button>
+                                        <button
+                                          onClick={() => onSaveVocab({
+                                            id: `v_${v.hangul || v.word}_${Date.now()}`,
+                                            word: v.hangul || v.word,
+                                            hangul: v.hangul || v.word,
+                                            type: v.type,
+                                            meaning_zh: v.meaning_zh,
+                                            meaning_en: v.meaning_en,
+                                            example_kr: v.example,
+                                            category: 'Extracted from Chat',
+                                            level: 'Daily',
+                                            isBookmarked: true,
+                                          })}
+                                          className="p-1.5 text-slate-300 hover:text-slate-600 transition-colors cursor-pointer rounded-lg hover:bg-stone-100"
+                                          title="Save to Notebook"
+                                        >
+                                          <Bookmark className={`w-3.5 h-3.5 transition-colors ${isSaved ? 'fill-slate-700 text-slate-700' : 'text-slate-300 hover:text-slate-600'}`} />
+                                        </button>
+                                      </div>
                                     </div>
                                   );
                                 })}

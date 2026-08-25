@@ -29,8 +29,22 @@ function normalizePOS(rawPos: string): string {
   if (p.startsWith('조') || p.includes('助词')) return '조사 (助词)';
   if (p.startsWith('접') || p === 'conj' || p.includes('接续') || p.includes('连词')) return '접속사 (连词)';
   if (p.includes('신조') || p.includes('流行') || p.includes('俚语')) return '신조어 (流行语)';
+  if (p.includes('관용') || p.includes('搭配') || p.includes('短语') || p.includes('表达')) return '관용구 (搭配/惯用语)';
   return '어휘 (常用词汇)';
 }
+
+// Common PDF / UI noise patterns that should be filtered out
+const NOISE_LINE_PATTERNS = [
+  /^(page|\d+|第[0-9一二三四五六七八九十]+[课单元课时章节]|chapter|unit|lesson|section)\b/i,
+  /^(한국어|中文|english|词源|发音|搭配|表达|序号|品词|품사|단어|뜻|예문|번호)\s*$/i,
+  /可自行筛选|制作自己的词表|单词书|第\s*一\s*轮遮住|轮遮住|只看\s*韩语|版权所有|copyright/i,
+  /^hobbies\s*\d+/i,
+  /^汉字词\s*\d+/i,
+  /^固有词\s*\d+/i,
+  /^外来词\s*\d+/i,
+  /^混合词\s*\d+/i,
+  /^[=\-_*#]{3,}$/
+];
 
 /**
  * Robust Text Line Parser: Extracts Word, POS, Hanja/Origin, Pronunciation, and Definition
@@ -44,11 +58,12 @@ export function parseTextLineToVocabItem(
   let trimmed = line.trim();
   if (!trimmed || trimmed.length < 2) return null;
 
-  // Ignore pure chapter headers, page indicators, or pure separators
-  if (/^(page|\d+|第[0-9一二三四五六七八九十]+[课单元课时章节]|chapter|unit|lesson|section)\b/i.test(trimmed) && !/[\uac00-\ud7af]/.test(trimmed)) {
-    return null;
+  // Filter out pure noise lines
+  for (const pattern of NOISE_LINE_PATTERNS) {
+    if (pattern.test(trimmed) && !/[\uac00-\ud7af]{3,}/.test(trimmed)) {
+      return null;
+    }
   }
-  if (/^[=\-_*#]{3,}$/.test(trimmed)) return null;
 
   // Must contain Korean characters (Hangul)
   const hasHangul = /[\uac00-\ud7a3]/.test(trimmed);
@@ -72,35 +87,41 @@ export function parseTextLineToVocabItem(
   if (exMatch) {
     exampleKr = exMatch[1].trim();
     exampleZh = (exMatch[2] || exMatch[3] || '').trim();
-    // Remove example part from trimmed to parse word/meaning cleanly
     trimmed = trimmed.substring(0, exMatch.index).trim();
   }
 
-  // 2. Extract Bracketed Hanja/Origin like (韓語/漢字) or [漢字] or 【漢字】
+  // 2. Extract Collocation/Pattern notes: e.g. "搭 · 搭配/表达 时间 + 내다"
+  const colMatch = trimmed.match(/(?:搭|搭配|表达|collocation|phrase)[\s:：·]+(.+)$/i);
+  let collocationNote = '';
+  if (colMatch) {
+    collocationNote = colMatch[1].trim();
+    trimmed = trimmed.substring(0, colMatch.index).trim();
+  }
+
+  // 3. Extract Bracketed Hanja/Origin like (韓語/漢字) or [漢字] or 【漢字】
   const hanjaMatch = trimmed.match(/[（(【]([\u4e00-\u9fa5A-Za-z0-9·\s\-–]+)[)）】]/);
   if (hanjaMatch && /[\u4e00-\u9fa5]/.test(hanjaMatch[1])) {
     hanjaOrOrigin = hanjaMatch[1].trim();
   }
 
-  // 3. Extract Pronunciation [발음] or /발음/
+  // 4. Extract Pronunciation [발음] or /발음/
   const pronMatch = trimmed.match(/[\[\/]([\uac00-\ud7a3\s]+)[\]\/]/);
   if (pronMatch) {
     pronunciation = pronMatch[1].trim();
   }
 
-  // 4. Extract POS tags like [명], [동], [형], (명), (동), n., v., adj., 名, 动, 形
-  const posMatch = trimmed.match(/(?:\[|\(|（|【)(명|동|형|부|감|관|의|대|수|조|접|명사|동사|형용사|부사|감탄사|신조어|n|v|adj|adv|prep|conj)(?:\]|\)|）|】)/i);
+  // 5. Extract POS tags like [명], [동], [형], (명), (동), n., v., adj., 名, 动, 形
+  const posMatch = trimmed.match(/(?:\[|\(|（|【)(명|동|형|부|감|관|의|대|수|조|접|명사|동사|형용사|부사|감탄사|신조어|관용구|n|v|adj|adv|prep|conj)(?:\]|\)|）|】)/i);
   if (posMatch) {
     pos = normalizePOS(posMatch[1]);
   } else {
-    // Check dot pos like "n. " or "v. " or "名. " or "动. "
     const dotPosMatch = trimmed.match(/\b(n|v|adj|adv|prep|명|동|형|부|名|动|形|副)\.\s*/i);
     if (dotPosMatch) {
       pos = normalizePOS(dotPosMatch[1]);
     }
   }
 
-  // 5. Delimiter pattern check (Tab, colon, comma, dashes, pipes, slashes, double space)
+  // 6. Delimiter pattern check (Tab, colon, comma, dashes, pipes, slashes, double space)
   const delimiters = [
     '\t',
     ' \t ',
@@ -143,15 +164,13 @@ export function parseTextLineToVocabItem(
       .replace(/^(n|v|adj|adv|명|동|형|부|名|动|形|副)\.?\s*/i, '')
       .trim();
   } else {
-    // 6. Direct boundary parsing (e.g. "가게 商店", "가방 书包，手提包", "안녕하세요 你好")
-    // Match the leading Korean word (including compound spaces or particles)
+    // Direct boundary parsing (e.g. "가게 商店", "시간을 내다 腾出时间，抽空")
     const hangulChunkMatch = trimmed.match(/^([\uac00-\ud7a3]+(?:[\s\-~][\uac00-\ud7a3]+)*)/);
     if (hangulChunkMatch) {
       hangul = hangulChunkMatch[1].trim();
       word = hangul;
       const rest = trimmed.substring(hangulChunkMatch[0].length).trim();
       
-      // Clean brackets and take Chinese/English definition
       meaningZh = rest
         .replace(/^[\[\(（【][^\]\)）】]*[\]\)）】]\s*/, '')
         .replace(/^[\[\(（【][^\]\)）】]*[\]\)）】]\s*/, '')
@@ -160,7 +179,7 @@ export function parseTextLineToVocabItem(
     }
   }
 
-  // 7. Fallback: regex split by Korean block and Chinese block
+  // Fallback: regex split by Korean block and Chinese block
   if (!hangul || !meaningZh) {
     const krMatch = trimmed.match(/([\uac00-\ud7a3\s~-]+)/);
     const zhMatch = trimmed.match(/([\u4e00-\u9fa5\w\s，,。；;、~·！!？?]+)/);
@@ -177,20 +196,40 @@ export function parseTextLineToVocabItem(
   hangul = hangul.replace(/^[\(\[\{]/, '').replace(/[\)\]\}]$/, '').trim();
   word = hangul;
 
-  // Clean meaning
-  if (!meaningZh || meaningZh.length < 1) {
-    meaningZh = '词汇解析中';
-  } else {
-    meaningZh = meaningZh.replace(/^[:：\-—=\s]+/, '').trim();
+  // Reject garbage Hangul that are whole instruction sentences (e.g. length > 25 chars without spaces or entire sentence)
+  if (hangul.length > 25) {
+    return null;
   }
 
-  // Auto-detect POS from Korean suffix if not explicitly detected
+  // Clean meaning and prune giant run-on paragraphs
+  if (!meaningZh || meaningZh.length < 1) {
+    meaningZh = '词汇标准释义';
+  } else {
+    meaningZh = meaningZh
+      .replace(/^[:：\-—=\s]+/, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    // If meaning is too long (> 60 chars) or contains noisy UI instructions, trim to the primary definitions
+    if (meaningZh.length > 60) {
+      const firstSentence = meaningZh.split(/[。；;!！\n]/)[0];
+      if (firstSentence && firstSentence.length >= 2 && firstSentence.length <= 40) {
+        meaningZh = firstSentence.trim();
+      } else {
+        meaningZh = meaningZh.substring(0, 45).trim() + '...';
+      }
+    }
+  }
+
+  // Auto-detect POS from Korean suffix if default
   if (pos === '명사 (名词)') {
-    if (hangul.endsWith('하다') || hangul.endsWith('되다') || hangul.endsWith('거리다')) {
+    if (hangul.includes(' ') && (hangul.endsWith('하다') || hangul.endsWith('내다') || hangul.endsWith('먹다') || hangul.endsWith('보다') || hangul.endsWith('가다') || hangul.endsWith('오다'))) {
+      pos = '관용구 (搭配/短语)';
+    } else if (hangul.endsWith('하다') || hangul.endsWith('되다') || hangul.endsWith('거리다') || hangul.endsWith('다') && !hangul.endsWith('스럽다') && !hangul.endsWith('롭다')) {
       pos = '동사 (动词)';
-    } else if (hangul.endsWith('스럽다') || hangul.endsWith('롭다') || hangul.endsWith('답다') || hangul.endsWith('다') && (meaningZh.includes('的') || meaningZh.includes('感到'))) {
+    } else if (hangul.endsWith('스럽다') || hangul.endsWith('롭다') || hangul.endsWith('답다') || (hangul.endsWith('다') && (meaningZh.includes('的') || meaningZh.includes('感到')))) {
       pos = '형용사 (形容词)';
-    } else if (hangul.endsWith('히') || hangul.endsWith('이') && meaningZh.includes('地')) {
+    } else if (hangul.endsWith('히') || (hangul.endsWith('이') && meaningZh.includes('地'))) {
       pos = '부사 (副词)';
     }
   }
@@ -200,7 +239,7 @@ export function parseTextLineToVocabItem(
     exampleKr = `${hangul}을/를 사용한 실전 표현이에요.`;
   }
   if (!exampleZh) {
-    exampleZh = `关于“${meaningZh}”的实战表达。`;
+    exampleZh = collocationNote ? `搭配/表达: ${collocationNote}` : `关于“${meaningZh}”的实战表达。`;
   }
 
   return {
@@ -224,6 +263,40 @@ export function parseTextLineToVocabItem(
 }
 
 /**
+ * Parses multiple embedded entries in a complex multi-column row
+ */
+function extractMultipleEntriesFromRow(
+  rawText: string,
+  baseIndex: number,
+  categoryName: string,
+  bookTitle: string
+): VocabItem[] {
+  const results: VocabItem[] = [];
+  
+  // Pattern to find chunks of [Hangul phrase] followed by [Chinese meaning]
+  // e.g. "시간을 내다 腾出时间，抽空 make time 마음을 먹다 下决心 make up one's mind"
+  const entryRegex = /([\uac00-\ud7a3]+(?:\s+[\uac00-\ud7a3]+)*)\s*(?:[\t\s]+|[:：])\s*([\u4e00-\u9fa5][\u4e00-\u9fa5\w\s，,·/、~-]+?)(?=(?:[\uac00-\ud7a3]{2,}|\t|\n|$))/g;
+  
+  let match;
+  let subIndex = 0;
+  while ((match = entryRegex.exec(rawText)) !== null) {
+    const kr = match[1].trim();
+    const zh = match[2].trim();
+    
+    // Ignore if kr is noise
+    if (['한국어', '中文', '发音', '词源', '搭配', '단어', '뜻'].includes(kr)) continue;
+    if (kr.length >= 1 && zh.length >= 1 && zh.length <= 40) {
+      const item = parseTextLineToVocabItem(`${kr}\t${zh}`, baseIndex + subIndex, categoryName, bookTitle);
+      if (item && item.hangul && item.meaning_zh) {
+        results.push(item);
+        subIndex++;
+      }
+    }
+  }
+  return results;
+}
+
+/**
  * Parse Raw Text (TXT / String / PDF Pages) with single-line & multi-line pairing support
  */
 export function parseRawTextLexicon(
@@ -239,7 +312,17 @@ export function parseRawTextLexicon(
     const rawLine = lines[i].trim();
     if (!rawLine) continue;
 
-    // Check if line contains multiple entries separated by semicolons (e.g. "가방: 包; 지갑: 钱包")
+    // Filter out common noise / header lines
+    let isNoise = false;
+    for (const pat of NOISE_LINE_PATTERNS) {
+      if (pat.test(rawLine) && !/[\uac00-\ud7af]{3,}/.test(rawLine)) {
+        isNoise = true;
+        break;
+      }
+    }
+    if (isNoise) continue;
+
+    // Check if line contains multiple entries separated by semicolons
     if (rawLine.includes(';') || rawLine.includes('；')) {
       const subEntries = rawLine.split(/[;；]/).filter(s => s.trim().length > 0);
       if (subEntries.length > 1) {
@@ -254,23 +337,37 @@ export function parseRawTextLexicon(
       }
     }
 
+    // Try multi-entry extraction if the line contains multiple distinct Korean words
+    const hangulMatches = rawLine.match(/[\uac00-\ud7a3]+/g) || [];
+    if (hangulMatches.length >= 3 && rawLine.length > 50) {
+      const multiItems = extractMultipleEntriesFromRow(rawLine, items.length, categoryName, bookTitle);
+      if (multiItems.length >= 2) {
+        for (const mItem of multiItems) {
+          if (!seenHangul.has(mItem.hangul)) {
+            seenHangul.add(mItem.hangul);
+            items.push(mItem);
+          }
+        }
+        continue;
+      }
+    }
+
     // Try parsing single line
     const item = parseTextLineToVocabItem(rawLine, items.length, categoryName, bookTitle);
-    if (item && item.hangul && item.meaning_zh && item.meaning_zh !== '词汇解析中' && !seenHangul.has(item.hangul)) {
+    if (item && item.hangul && item.meaning_zh && item.meaning_zh !== '词汇标准释义' && !seenHangul.has(item.hangul)) {
       seenHangul.add(item.hangul);
       items.push(item);
       continue;
     }
 
     // Multi-line pairing fallback:
-    // If line i is pure Korean (e.g. "가방") and line i+1 is Chinese/meaning (e.g. "书包，手提包")
     if (i + 1 < lines.length) {
       const nextLine = lines[i + 1].trim();
       const isLineHangulOnly = /^[\uac00-\ud7a3\s~-]+$/.test(rawLine);
       const isNextLineMeaning = /[\u4e00-\u9fa5]/.test(nextLine) && !/[\uac00-\ud7a3]/.test(nextLine);
 
       if (isLineHangulOnly && isNextLineMeaning) {
-        const combined = `${rawLine} - ${nextLine}`;
+        const combined = `${rawLine}\t${nextLine}`;
         const pairedItem = parseTextLineToVocabItem(combined, items.length, categoryName, bookTitle);
         if (pairedItem && pairedItem.hangul && !seenHangul.has(pairedItem.hangul)) {
           seenHangul.add(pairedItem.hangul);
@@ -281,7 +378,6 @@ export function parseRawTextLexicon(
       }
     }
 
-    // If single line had hangul even if meaning defaulted, accept it
     if (item && item.hangul && !seenHangul.has(item.hangul)) {
       seenHangul.add(item.hangul);
       items.push(item);
@@ -508,7 +604,7 @@ export function parseJSONLexicon(
 }
 
 /**
- * Client-side PDF Parser using pdfjs-dist
+ * Client-side PDF Parser using pdfjs-dist with spatial coordinate grouping
  */
 export async function parsePDFLexicon(
   file: File,
@@ -524,18 +620,74 @@ export async function parsePDFLexicon(
   for (let pageNum = 1; pageNum <= numPages; pageNum++) {
     const page = await pdf.getPage(pageNum);
     const textContent = await page.getTextContent();
-    const pageText = textContent.items
-      .map((item: any) => ('str' in item ? item.str : ''))
-      .join(' ');
+    
+    // Group text items by vertical coordinate (y-axis) to preserve table rows
+    const itemsByLine = new Map<number, Array<{ x: number; text: string }>>();
+    
+    for (const item of textContent.items) {
+      if (!('str' in item)) continue;
+      const str = (item as any).str || '';
+      if (!str.trim()) continue;
 
-    fullText += pageText + '\n';
+      const transform = (item as any).transform || [1, 0, 0, 1, 0, 0];
+      const x = Math.round(transform[4] || 0);
+      const y = Math.round(transform[5] || 0);
+
+      // Find an existing y-band within 5px tolerance
+      let matchedKey: number | null = null;
+      for (const existingY of itemsByLine.keys()) {
+        if (Math.abs(existingY - y) <= 5) {
+          matchedKey = existingY;
+          break;
+        }
+      }
+
+      const lineKey = matchedKey !== null ? matchedKey : y;
+      if (!itemsByLine.has(lineKey)) {
+        itemsByLine.set(lineKey, []);
+      }
+      itemsByLine.get(lineKey)!.push({ x, text: str });
+    }
+
+    // Sort rows from top of the page (descending y) to bottom
+    const sortedY = Array.from(itemsByLine.keys()).sort((a, b) => b - a);
+    const pageLines: string[] = [];
+
+    for (const y of sortedY) {
+      // Sort items within the row from left to right (ascending x)
+      const rowItems = itemsByLine.get(y)!.sort((a, b) => a.x - b.x);
+      
+      // If items have notable spacing (x diff > 15), join with tab, otherwise space
+      let rowString = '';
+      for (let i = 0; i < rowItems.length; i++) {
+        const curr = rowItems[i];
+        if (i === 0) {
+          rowString += curr.text.trim();
+        } else {
+          const prev = rowItems[i - 1];
+          const gap = curr.x - (prev.x + prev.text.length * 6);
+          if (gap > 18) {
+            rowString += '\t' + curr.text.trim();
+          } else {
+            rowString += ' ' + curr.text.trim();
+          }
+        }
+      }
+
+      if (rowString.trim()) {
+        pageLines.push(rowString.trim());
+      }
+    }
+
+    fullText += pageLines.join('\n') + '\n\n';
 
     if (onProgress) {
-      onProgress(Math.round((pageNum / numPages) * 100), `正在解析第 ${pageNum}/${numPages} 页文本...`);
+      onProgress(Math.round((pageNum / numPages) * 100), `正在精确提取第 ${pageNum}/${numPages} 页词条...`);
     }
   }
 
   const cleanBookName = file.name.replace(/\.[^/.]+$/, '');
   return parseRawTextLexicon(fullText, 'PDF Lexicon', cleanBookName);
 }
+
 

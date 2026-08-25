@@ -13,6 +13,7 @@ import {
   Lightbulb
 } from 'lucide-react';
 import { GrammarCard, GrammarAnalysisResult } from '../types';
+import { notifyToast, formatApiErrorMessage } from '../utils/toast';
 import { speakKorean } from '../utils/audio';
 
 interface GrammarViewProps {
@@ -64,8 +65,15 @@ export const GrammarView: React.FC<GrammarViewProps> = ({
       if (!response.ok) throw new Error('Analysis request failed');
       const data = await response.json();
       setAnalysisResult(data);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      const { title, message } = formatApiErrorMessage(err, '语法解析');
+      notifyToast({
+        type: 'warning',
+        title,
+        message: `${message}（已为您呈现精选离线语法拆解）`,
+        duration: 4500
+      });
       // Fallback
       setAnalysisResult({
         original: sentence,

@@ -14,10 +14,12 @@ import {
   ArrowRight,
   List,
   Sparkles,
-  Trophy
+  Trophy,
+  BookOpen
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { VocabItem } from '../types';
+import { VocabItem, CustomLexiconBook } from '../types';
+import { PRESET_CUSTOM_BOOKS } from '../data/presetLexicons';
 import { speakKorean } from '../utils/audio';
 import { HangulHelper } from './HangulHelper';
 
@@ -44,8 +46,21 @@ export const FlashcardsView: React.FC<FlashcardsViewProps> = ({
   const [isDictationChecked, setIsDictationChecked] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
-  const [selectedCategory, setSelectedCategory] = useState<string>('All');
-  const [selectedLevel, setSelectedLevel] = useState<string>('All');
+
+  // Dynamic Lexicon Books from LocalStorage + Presets
+  const [customBooks] = useState<CustomLexiconBook[]>(() => {
+    try {
+      const saved = localStorage.getItem('korean_buddy_custom_lexicon');
+      if (saved) {
+        return JSON.parse(saved);
+      }
+    } catch (e) {
+      console.error('Failed to load custom lexicon books in FlashcardsView', e);
+    }
+    return PRESET_CUSTOM_BOOKS;
+  });
+
+  const [selectedBookId, setSelectedBookId] = useState<string>('all');
   const [onlyBookmarked, setOnlyBookmarked] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   
@@ -64,51 +79,41 @@ export const FlashcardsView: React.FC<FlashcardsViewProps> = ({
   const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
   const [isAnswerChecked, setIsAnswerChecked] = useState(false);
 
-  // Filter words
+  // Map counts per book
+  const bookCounts = React.useMemo(() => {
+    const counts: Record<string, number> = {
+      all: vocabulary.length,
+      saved: vocabulary.filter(v => savedVocabIds.has(v.id) || savedVocabIds.has(v.word) || v.isBookmarked).length
+    };
+    
+    customBooks.forEach(b => {
+      const matched = vocabulary.filter(item => {
+        return item.source === b.title || 
+          item.category === b.category || 
+          (b.words && b.words.some(bw => bw.id === item.id || bw.word === item.word || bw.hangul === item.hangul));
+      });
+      counts[b.id] = matched.length > 0 ? matched.length : (b.totalWords || b.words?.length || 0);
+    });
+
+    return counts;
+  }, [vocabulary, customBooks, savedVocabIds]);
+
+  // Filter words strictly by Vocab Book
   const filteredVocab = vocabulary.filter((item) => {
     const isBookmarked = savedVocabIds.has(item.id) || savedVocabIds.has(item.word) || item.isBookmarked;
     if (onlyBookmarked && !isBookmarked) return false;
     
-    // Category or Source filter
-    if (selectedCategory !== 'All') {
-      const matchCat = 
-        item.category?.toLowerCase().includes(selectedCategory.toLowerCase()) || 
-        item.source?.toLowerCase().includes(selectedCategory.toLowerCase()) ||
-        item.level?.toLowerCase().includes(selectedCategory.toLowerCase());
-      if (!matchCat) return false;
-    }
-
-    // Level filter
-    if (selectedLevel !== 'All') {
-      if (selectedLevel === 'TOPIK 1-2') {
-        const match = item.level === 'TOPIK 1' || item.level === 'TOPIK 2' || 
-          item.category?.includes('TOPIK 1-2') || item.source?.includes('TOPIK 1-2') || item.level?.includes('TOPIK 1');
-        if (!match) return false;
-      } else if (selectedLevel === 'TOPIK 3-4') {
-        const match = item.level === 'TOPIK 3' || item.level === 'TOPIK 4' || 
-          item.category?.includes('TOPIK 3-4') || item.source?.includes('TOPIK 3-4') || item.level?.includes('TOPIK 3') || item.level?.includes('TOPIK 4');
-        if (!match) return false;
-      } else if (selectedLevel === 'TOPIK 5-6') {
-        const match = item.level === 'TOPIK 5' || item.level === 'TOPIK 6' || 
-          item.category?.includes('TOPIK 5-6') || item.source?.includes('TOPIK 5-6') || item.level?.includes('TOPIK 5') || item.level?.includes('TOPIK 6');
-        if (!match) return false;
-      } else if (selectedLevel === 'Yonsei') {
-        const match = item.level === 'Yonsei' || item.category?.includes('延世') || item.source?.includes('延世');
-        if (!match) return false;
-      } else if (selectedLevel === 'SNU') {
-        const match = item.level === 'SNU' || item.category?.includes('首尔') || item.source?.includes('首尔');
-        if (!match) return false;
-      } else if (selectedLevel === 'K-pop') {
-        const match = item.level === 'K-pop' || item.category?.includes('K-POP') || item.source?.includes('K-POP') || item.source?.includes('饭圈');
-        if (!match) return false;
-      } else if (selectedLevel === 'Daily') {
-        const match = item.level === 'Daily' || item.category?.includes('日常') || item.source?.includes('日常');
-        if (!match) return false;
-      } else if (selectedLevel === 'Custom') {
-        const match = item.level === 'Custom' || item.level === 'AI Real-time Expansion' || item.category?.includes('Lexicon') || item.category?.includes('延世') || item.source?.includes('词书');
-        if (!match) return false;
-      } else if (item.level !== selectedLevel && !item.category?.includes(selectedLevel)) {
-        return false;
+    // Filter strictly by selected Vocab Book
+    if (selectedBookId === 'saved') {
+      if (!isBookmarked) return false;
+    } else if (selectedBookId !== 'all') {
+      const currentBook = customBooks.find(b => b.id === selectedBookId);
+      if (currentBook) {
+        const isMatch = 
+          item.source === currentBook.title ||
+          item.category === currentBook.category ||
+          (currentBook.words && currentBook.words.some(bw => bw.id === item.id || bw.word === item.word || bw.hangul === item.hangul));
+        if (!isMatch) return false;
       }
     }
 
@@ -293,49 +298,99 @@ export const FlashcardsView: React.FC<FlashcardsViewProps> = ({
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search..."
+              placeholder="搜索韩语词条、汉字音或中文释义..."
               className="w-full pl-9 pr-4 py-2.5 bg-[#FAF9F6] border border-[#E0DED7] rounded-xl text-[#2D2D2D] placeholder-[#B5A69A] text-xs focus:outline-none focus:border-[#2D2D2D] font-sans"
             />
           </div>
 
           <button
-            onClick={() => setOnlyBookmarked(!onlyBookmarked)}
+            onClick={() => {
+              if (selectedBookId === 'saved' && onlyBookmarked) {
+                setSelectedBookId('all');
+                setOnlyBookmarked(false);
+              } else {
+                setSelectedBookId('saved');
+                setOnlyBookmarked(true);
+              }
+            }}
             className={`flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl font-medium transition-colors whitespace-nowrap text-xs md:w-auto w-full ${
-              onlyBookmarked
+              onlyBookmarked || selectedBookId === 'saved'
                 ? 'bg-[#2D2D2D] text-white shadow-sm'
                 : 'bg-[#FAF9F6] text-[#71675E] hover:bg-[#F5F2ED] border border-[#E0DED7]'
             }`}
           >
             <BookmarkCheck className="w-4 h-4" />
-            <span>Only Saved ({savedVocabIds.size})</span>
+            <span>只看已收藏生词 ({savedVocabIds.size})</span>
           </button>
         </div>
 
-        {/* Dictionary / Level Filter */}
-        <div className="flex items-center gap-2 text-xs overflow-x-auto scrollbar-none py-1">
-          {[
-            { id: 'All', label: 'All Lists' },
-            { id: 'TOPIK 1-2', label: 'TOPIK Beginner' },
-            { id: 'TOPIK 3-4', label: 'TOPIK Intermediate' },
-            { id: 'TOPIK 5-6', label: 'TOPIK Advanced' },
-            { id: 'Yonsei', label: 'Yonsei Vocab' },
-            { id: 'SNU', label: 'SNU Vocab' },
-            { id: 'K-pop', label: 'K-POP Vocab' },
-            { id: 'Daily', label: 'Daily Vocab' },
-            { id: 'Custom', label: '📥 导入词书/AI衍生' },
-          ].map((lvl) => (
+        {/* Vocab Books (词书) Dynamic Filter Tabs */}
+        <div className="space-y-2 pt-1 border-t border-[#F0ECE6]">
+          <div className="flex items-center justify-between text-xs text-[#71675E] px-1">
+            <span className="font-medium flex items-center gap-1.5">
+              <BookOpen className="w-3.5 h-3.5 text-[#8B7E74]" />
+              <span>按词书分类研读 ({customBooks.length} 本词书)</span>
+            </span>
+            <span className="text-[11px] text-[#A89F91]">当前筛选共 {filteredVocab.length} 词</span>
+          </div>
+
+          <div className="flex items-center gap-2 text-xs overflow-x-auto scrollbar-none py-1">
             <button
-              key={lvl.id}
-              onClick={() => setSelectedLevel(lvl.id)}
-              className={`px-3 py-1.5 rounded-lg font-medium transition-colors whitespace-nowrap flex-shrink-0 ${
-                selectedLevel === lvl.id
-                  ? 'bg-[#2D2D2D] text-white shadow-sm'
+              onClick={() => { setSelectedBookId('all'); setOnlyBookmarked(false); }}
+              className={`px-3.5 py-2 rounded-xl font-medium transition-all whitespace-nowrap flex items-center gap-1.5 flex-shrink-0 ${
+                selectedBookId === 'all' && !onlyBookmarked
+                  ? 'bg-[#2D2D2D] text-white shadow-sm font-semibold'
                   : 'bg-[#FAF9F6] text-[#71675E] hover:bg-[#F5F2ED] border border-[#E0DED7]'
               }`}
             >
-              {lvl.label}
+              <span>全部词汇</span>
+              <span className={`text-[11px] px-1.5 py-0.5 rounded-md ${
+                selectedBookId === 'all' && !onlyBookmarked ? 'bg-white/20 text-white' : 'bg-black/5 text-[#71675E]'
+              }`}>
+                {bookCounts['all'] || vocabulary.length}
+              </span>
             </button>
-          ))}
+
+            <button
+              onClick={() => { setSelectedBookId('saved'); setOnlyBookmarked(true); }}
+              className={`px-3.5 py-2 rounded-xl font-medium transition-all whitespace-nowrap flex items-center gap-1.5 flex-shrink-0 ${
+                selectedBookId === 'saved' || onlyBookmarked
+                  ? 'bg-[#2D2D2D] text-white shadow-sm font-semibold'
+                  : 'bg-[#FAF9F6] text-[#71675E] hover:bg-[#F5F2ED] border border-[#E0DED7]'
+              }`}
+            >
+              <BookmarkCheck className="w-3.5 h-3.5" />
+              <span>我的生词本</span>
+              <span className={`text-[11px] px-1.5 py-0.5 rounded-md ${
+                selectedBookId === 'saved' || onlyBookmarked ? 'bg-white/20 text-white' : 'bg-black/5 text-[#71675E]'
+              }`}>
+                {savedVocabIds.size}
+              </span>
+            </button>
+
+            {customBooks.map((book) => {
+              const isSelected = selectedBookId === book.id && !onlyBookmarked;
+              const count = bookCounts[book.id] || book.words?.length || book.totalWords || 0;
+              return (
+                <button
+                  key={book.id}
+                  onClick={() => { setSelectedBookId(book.id); setOnlyBookmarked(false); }}
+                  className={`px-3.5 py-2 rounded-xl font-medium transition-all whitespace-nowrap flex items-center gap-1.5 flex-shrink-0 ${
+                    isSelected
+                      ? 'bg-[#2D2D2D] text-white shadow-sm font-semibold'
+                      : 'bg-[#FAF9F6] text-[#71675E] hover:bg-[#F5F2ED] border border-[#E0DED7]'
+                  }`}
+                >
+                  <span>{book.title}</span>
+                  <span className={`text-[11px] px-1.5 py-0.5 rounded-md ${
+                    isSelected ? 'bg-white/20 text-white' : 'bg-black/5 text-[#71675E]'
+                  }`}>
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
 
@@ -345,17 +400,16 @@ export const FlashcardsView: React.FC<FlashcardsViewProps> = ({
           {filteredVocab.length === 0 ? (
             <div className="p-12 text-center bg-white rounded-2xl border border-[#E0DED7] text-[#71675E] space-y-3 ">
               <Layers className="w-10 h-10 mx-auto text-[#B5A69A]" />
-              <p>No vocabulary matches your filters.</p>
+              <p>当前选中的词书中暂无匹配词汇。</p>
               <button
                 onClick={() => {
-                  setSelectedCategory('All');
-                  setSelectedLevel('All');
+                  setSelectedBookId('all');
                   setOnlyBookmarked(false);
                   setSearchQuery('');
                 }}
                 className="text-xs text-[#2D2D2D] underline font-medium"
               >
-                Reset Filters
+                重置词书筛选
               </button>
             </div>
           ) : (

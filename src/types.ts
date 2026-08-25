@@ -1,3 +1,15 @@
+export interface ToastItem {
+  id: string;
+  type: 'error' | 'warning' | 'success' | 'info';
+  title: string;
+  message: string;
+  duration?: number;
+  action?: {
+    label: string;
+    onClick: () => void;
+  };
+}
+
 export interface VoiceSlotConfig {
   voice_id: string;
   speed: number;

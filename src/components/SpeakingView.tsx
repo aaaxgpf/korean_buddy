@@ -19,6 +19,7 @@ import confetti from 'canvas-confetti';
 import { SpeakingTask, SpeakingEvaluation, Companion } from '../types';
 import { speakKorean } from '../utils/audio';
 import { CompanionAvatar } from './CompanionAvatar';
+import { notifyToast, formatApiErrorMessage } from '../utils/toast';
 
 interface SpeakingViewProps {
   speakingTasks: SpeakingTask[];
@@ -124,8 +125,15 @@ export const SpeakingView: React.FC<SpeakingViewProps> = ({
         confetti({ particleCount: 60, spread: 80, origin: { y: 0.6 } });
         onIncreaseStreak();
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      const { title, message } = formatApiErrorMessage(err, '口语评测');
+      notifyToast({
+        type: 'warning',
+        title,
+        message: `${message}（已为您启用本地离线发音评分）`,
+        duration: 4500
+      });
       // Fallback
       setEvaluation({
         score: 93,

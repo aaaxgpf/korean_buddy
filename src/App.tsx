@@ -4,13 +4,15 @@ import { CustomPersonaModal } from './components/CustomPersonaModal';
 import { CreateCompanionModal } from './components/CreateCompanionModal';
 import { CompanionProfileModal } from './components/CompanionProfileModal';
 import { CompanionSparksModal } from './components/CompanionSparksModal';
-import { CompanionChat } from './components/CompanionChat';
+import { CompanionChat, formatKakaoMessageTime } from './components/CompanionChat';
 import { CompanionAvatar } from './components/CompanionAvatar';
 import { UserProfileModal } from './components/UserProfileModal';
 import { StudyView } from './components/StudyView';
 import { SettingsView } from './components/SettingsView';
 import { AppSettings, VoiceSlotConfig, MiniMaxConfig } from './types';
 
+import { ToastContainer } from './components/ToastContainer';
+import { notifyToast, showErrorToast, showSuccessToast, showWarningToast, formatApiErrorMessage } from './utils/toast';
 import { PRESET_COMPANIONS, PROACTIVE_CANDIDATES, getRandomCompanionStatus, getTimeAwareGreeting } from './data/companions';
 import { INITIAL_VOCABULARY } from './data/vocabulary';
 import { INITIAL_GRAMMAR_CARDS } from './data/grammar';
@@ -70,6 +72,35 @@ export default function App() {
       setShowSplash(false);
     }, 2500); // 2.5 second splash
     return () => clearTimeout(timer);
+  }, []);
+
+  // Global Backend & Network Error Interceptor to display user-friendly Toasts
+  useEffect(() => {
+    const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
+      const reason = event.reason;
+      console.warn('Unhandled Promise Rejection caught in App:', reason);
+      const errMsg = reason?.message || String(reason || '');
+      if (
+        errMsg.includes('Failed to fetch') ||
+        errMsg.includes('401') ||
+        errMsg.includes('429') ||
+        errMsg.includes('500') ||
+        errMsg.includes('NetworkError') ||
+        errMsg.includes('API') ||
+        errMsg.includes('鉴权')
+      ) {
+        const { title, message } = formatApiErrorMessage(reason, '网络通信');
+        notifyToast({
+          type: 'warning',
+          title,
+          message,
+          duration: 5000,
+        });
+      }
+    };
+
+    window.addEventListener('unhandledrejection', handleUnhandledRejection);
+    return () => window.removeEventListener('unhandledrejection', handleUnhandledRejection);
   }, []);
 
   // Companions State - GUARANTEE all preset companions are merged with custom settings and avatars
@@ -236,6 +267,21 @@ export default function App() {
     }
     return {};
   });
+
+  // Sorted companions: dynamically pin/sort companion with the most recent chat to the top
+  const sortedCompanions = React.useMemo(() => {
+    return [...companions].sort((a, b) => {
+      const aMsgs = companionChatMap[a.id] || [];
+      const bMsgs = companionChatMap[b.id] || [];
+      const aLastTime = aMsgs.length > 0 ? (aMsgs[aMsgs.length - 1].timestamp || 0) : 0;
+      const bLastTime = bMsgs.length > 0 ? (bMsgs[bMsgs.length - 1].timestamp || 0) : 0;
+
+      if (bLastTime !== aLastTime) {
+        return bLastTime - aLastTime;
+      }
+      return 0;
+    });
+  }, [companions, companionChatMap]);
 
   const [isCustomPersonaModalOpen, setIsCustomPersonaModalOpen] = useState(false);
   const [isCreateCompanionModalOpen, setIsCreateCompanionModalOpen] = useState(false);
@@ -740,6 +786,9 @@ export default function App() {
   return (
     <div className={`h-[100dvh] overflow-hidden text-[#2D2D2D] flex flex-col font-sans selection:bg-[#8B7E74]/20 selection:text-[#1A1A1A] ${settings.theme === "kkt" ? "bg-[#b2c7d9]" : settings.theme === "wechat" ? "bg-[#EDEDED]" : "bg-[#FAF9F6]"}`}>
       
+      {/* Global Toast Notification System */}
+      <ToastContainer />
+      
       {showSplash && (
         <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-[#FAF9F6] animate-fadeOut" style={{ animationDelay: '2s', animationFillMode: 'forwards' }}>
           <div className="animate-bounce">
@@ -800,12 +849,14 @@ export default function App() {
                   
                   <div className="text-[10px] font-semibold tracking-wider text-stone-400 uppercase mt-6 mb-2.5 ml-2 font-sans">Buddies</div>
                   <div className="space-y-0.5">
-                     {companions.map((comp, idx) => {
+                     {sortedCompanions.map((comp, idx) => {
                        const unreadCount = unreadMap[comp.id] || 0;
                        const isSelected = currentCompanion.id === comp.id && chatView === 'chat';
-                       const isLast = idx === companions.length - 1;
-                       const nextComp = companions[idx + 1];
+                       const isLast = idx === sortedCompanions.length - 1;
+                       const nextComp = sortedCompanions[idx + 1];
                        const isNextSelected = nextComp && currentCompanion.id === nextComp.id && chatView === 'chat';
+                       const chatHistory = companionChatMap[comp.id] || [];
+                       const lastMsg = chatHistory.length > 0 ? chatHistory[chatHistory.length - 1] : null;
 
                         return (
                           <React.Fragment key={comp.id}>
@@ -832,8 +883,19 @@ export default function App() {
                              <div className="flex flex-col flex-1 min-w-0 pb-0.5">
                                <div className="flex items-center justify-between gap-1.5">
                                  <span className="font-medium text-[15px] text-stone-900 shrink-0 whitespace-nowrap font-sans">{comp.name_ko || comp.name_kr || comp.remark}</span>
+                                 {lastMsg && (
+                                   <span className="text-[10px] text-stone-400 font-sans shrink-0">
+                                     {formatKakaoMessageTime(lastMsg.timestamp)}
+                                   </span>
+                                 )}
                                </div>
-                               <span className="text-xs text-stone-500 truncate mt-0.5 leading-snug font-sans">{comp.status_msg}</span>
+                               <span className="text-xs text-stone-500 truncate mt-0.5 leading-snug font-sans">
+                                 {lastMsg ? (
+                                   lastMsg.role === 'user' 
+                                     ? `我: ${lastMsg.content}` 
+                                     : (lastMsg.korean || lastMsg.content)
+                                 ) : comp.status_msg}
+                               </span>
                              </div>
                            </div>
 
@@ -855,7 +917,7 @@ export default function App() {
                  theme={settings.theme}
                  onBack={() => setChatView('list')}
                  companion={currentCompanion}
-                 companions={companions}
+                 companions={sortedCompanions}
                  onSelectCompanion={(comp) => { handleSelectCompanion(comp); setChatView('chat'); }}
                  companionMessages={companionChatMap[currentCompanion.id]}
                  onUpdateMessages={(updater) => handleUpdateCompanionMessages(currentCompanion.id, updater)}

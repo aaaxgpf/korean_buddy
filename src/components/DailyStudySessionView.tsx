@@ -19,6 +19,7 @@ import confetti from 'canvas-confetti';
 import { VocabItem, StudyPlan, StudyPlanDay, CustomLexiconBook } from '../types';
 import { speakKorean } from '../utils/audio';
 import { HangulHelper } from './HangulHelper';
+import { notifyToast, formatApiErrorMessage } from '../utils/toast';
 
 interface Props {
   vocabulary: VocabItem[];
@@ -145,8 +146,20 @@ export const DailyStudySessionView: React.FC<Props> = ({
       setStage2Index(0);
       setRecallIndex(0);
       confetti({ particleCount: 50, spread: 70 });
-    } catch (e) {
+      notifyToast({
+        type: 'success',
+        title: '🎯 学习计划定制成功',
+        message: `已为您定制 ${selectedDays} 天 ${selectedTarget} 进阶路线！`
+      });
+    } catch (e: any) {
       console.error(e);
+      const { title, message } = formatApiErrorMessage(e, '个性化学习计划');
+      notifyToast({
+        type: 'warning',
+        title,
+        message: `${message}（已为您启用本地经典 7 日进阶规划）`,
+        duration: 4500
+      });
     } finally {
       setIsGenerating(false);
     }
@@ -191,8 +204,15 @@ export const DailyStudySessionView: React.FC<Props> = ({
           items: vocabulary.slice(0, 8)
         });
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
+      const { title, message } = formatApiErrorMessage(e, '专题模块加载');
+      notifyToast({
+        type: 'warning',
+        title,
+        message,
+        duration: 4000
+      });
     } finally {
       setIsFetchingShortcut(false);
     }

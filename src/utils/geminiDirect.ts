@@ -118,13 +118,14 @@ export async function directTestGeminiConnection(config: DirectGeminiConfig): Pr
     ? [{ isBearer: true }, { isBearer: false }]
     : [{ isBearer: false }, { isBearer: true }];
 
-  // Model fallback chain: try user configured model first, fallback to stable public models
+  // Model fallback chain: try user configured model first, fallback to active modern models
   const candidateModels = [
     config.model?.trim(),
-    'gemini-2.0-flash',
-    'gemini-1.5-flash',
-    'gemini-2.0-flash-lite',
-    'gemini-1.5-pro'
+    'gemini-3.7-flash',
+    'gemini-3.6-flash',
+    'gemini-flash-latest',
+    'gemini-3.1-flash-lite',
+    'gemini-3.1-pro-preview'
   ].filter(Boolean) as string[];
 
   const uniqueCandidates = Array.from(new Set(candidateModels));
@@ -171,8 +172,8 @@ export async function directTestGeminiConnection(config: DirectGeminiConfig): Pr
           const errMsg = errData?.error?.message || `HTTP ${response.status}`;
           lastError = new Error(errMsg);
 
-          // If auth mode doesn't match, break to try the alternative authMode
-          if (errMsg.includes('OAuth 2') || errMsg.includes('ACCESS_TOKEN_TYPE_UNSUPPORTED') || response.status === 401) {
+          // If auth mode doesn't match, break inner model loop to try the alternative authMode
+          if (errMsg.includes('OAuth 2') || errMsg.includes('ACCESS_TOKEN_TYPE_UNSUPPORTED')) {
             break;
           }
 
@@ -210,7 +211,7 @@ export async function directTestLLMConnection(config: DirectGeminiConfig): Promi
   // OpenAI / DeepSeek / Custom (OpenAI-compatible)
   if (provider === 'openai' || provider === 'deepseek' || provider === 'custom') {
     const defaultBase = provider === 'deepseek'
-      ? 'https://api.deepseek.com/v1'
+      ? 'https://api.deepseek.com'
       : 'https://api.openai.com/v1';
 
     const baseURL = (config.baseURL?.trim() || defaultBase).replace(/\/+$/, '');
@@ -289,13 +290,14 @@ export async function directSendGeminiChat(params: DirectChatParams): Promise<an
     throw new Error('NO_API_KEY');
   }
 
-  const userModel = (params.model?.trim() || 'gemini-2.0-flash').replace(/^models\//, '');
+  const userModel = (params.model?.trim() || 'gemini-3.7-flash').replace(/^models\//, '');
   const candidateModels = Array.from(new Set([
     userModel,
-    'gemini-2.0-flash',
-    'gemini-1.5-flash',
-    'gemini-2.0-flash-lite',
-    'gemini-1.5-pro'
+    'gemini-3.7-flash',
+    'gemini-3.6-flash',
+    'gemini-flash-latest',
+    'gemini-3.1-flash-lite',
+    'gemini-3.1-pro-preview'
   ]));
 
   const character = params.character;
