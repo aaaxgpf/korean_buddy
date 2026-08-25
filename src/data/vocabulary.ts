@@ -1,5 +1,6 @@
 import { VocabItem } from '../types';
 import { WordItem } from '../types/lexicon';
+import { sanitizeVocabItem } from '../utils/koreanDictionary';
 import topikBeginnerData from './lexicon/topik_beginner.json';
 import topikIntermediateData from './lexicon/topik_intermediate.json';
 import topikAdvancedData from './lexicon/topik_advanced.json';
@@ -20,7 +21,7 @@ export function convertWordItemToVocabItem(item: WordItem): VocabItem {
 
   const meta = categoryMap[item.category] || { category: 'Core Vocab', level: 'General' };
 
-  return {
+  return sanitizeVocabItem({
     id: item.id,
     word: item.word,
     hangul: item.word,
@@ -38,7 +39,7 @@ export function convertWordItemToVocabItem(item: WordItem): VocabItem {
     example_zh: item.example_zh,
     mastered: item.mastered ? 'mastered' : 'new',
     isBookmarked: false,
-  };
+  });
 }
 
 export const ALL_LEXICON_WORDS: WordItem[] = [

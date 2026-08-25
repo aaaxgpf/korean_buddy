@@ -315,6 +315,58 @@ export const LexiconUploadCenter: React.FC<Props> = ({
     setTimeout(() => setSuccessBanner(null), 3000);
   };
 
+  // Batch sanitize / clean active book
+  const handleBatchSanitizeActiveBook = () => {
+    if (!activeBook) return;
+    const cleanedWords = activeBook.words.map(sanitizeVocabItem);
+    const updatedBook: CustomLexiconBook = {
+      ...activeBook,
+      words: cleanedWords,
+      updatedAt: Date.now()
+    };
+    const updatedBooks = customBooks.map(b => b.id === activeBook.id ? updatedBook : b);
+    setCustomBooks(updatedBooks);
+    try {
+      localStorage.setItem('korean_buddy_custom_lexicon', JSON.stringify(updatedBooks));
+    } catch (e) {
+      console.warn('Failed to save to localStorage:', e);
+    }
+    setSuccessBanner('词书释义已全量规范清洗！多余数字已清除，中英文释义已精准分离。');
+    notifyToast({
+      type: 'success',
+      title: '✨ 词条清洗完成',
+      message: `已为《${activeBook.title}》清洗 ${cleanedWords.length} 个词条，分离中英文并清除杂质数字。`
+    });
+    setTimeout(() => setSuccessBanner(null), 4000);
+  };
+
+  // Word edit state & handlers
+  const [editingWord, setEditingWord] = useState<VocabItem | null>(null);
+
+  const handleSaveWordEdit = () => {
+    if (!editingWord || !activeBook) return;
+    const cleaned = sanitizeVocabItem(editingWord);
+    const updatedWords = activeBook.words.map(w => w.id === cleaned.id ? cleaned : w);
+    const updatedBook: CustomLexiconBook = {
+      ...activeBook,
+      words: updatedWords,
+      updatedAt: Date.now()
+    };
+    const updatedBooks = customBooks.map(b => b.id === activeBook.id ? updatedBook : b);
+    setCustomBooks(updatedBooks);
+    try {
+      localStorage.setItem('korean_buddy_custom_lexicon', JSON.stringify(updatedBooks));
+    } catch (e) {
+      console.warn('Failed to save to localStorage:', e);
+    }
+    setEditingWord(null);
+    notifyToast({
+      type: 'success',
+      title: '词条已更新',
+      message: `已成功修改词汇 “${cleaned.hangul}” 的释义与例句。`
+    });
+  };
+
   // Filter words in preview
   const filteredWords = (activeBook?.words || []).filter(w => {
     if (!searchQuery) return true;
@@ -323,6 +375,7 @@ export const LexiconUploadCenter: React.FC<Props> = ({
       (w.hangul && w.hangul.toLowerCase().includes(q)) ||
       (w.word && w.word.toLowerCase().includes(q)) ||
       (w.meaning_zh && w.meaning_zh.toLowerCase().includes(q)) ||
+      (w.meaning_en && w.meaning_en.toLowerCase().includes(q)) ||
       (w.hanja_or_root && w.hanja_or_root.toLowerCase().includes(q))
     );
   });
@@ -640,6 +693,15 @@ export const LexiconUploadCenter: React.FC<Props> = ({
               )}
 
               <button
+                onClick={handleBatchSanitizeActiveBook}
+                className="px-3 py-1.5 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 hover:text-slate-900 text-xs font-medium flex items-center gap-1.5 transition-colors shadow-sm"
+                title="清除杂质数字、规范分离中英文释义"
+              >
+                <RefreshCw size={13} className="text-slate-600" />
+                <span>一键清洗规范释义</span>
+              </button>
+
+              <button
                 onClick={handleTriggerAIExpansion}
                 disabled={isExpanding}
                 className="px-3.5 py-1.5 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-900 text-xs font-medium flex items-center gap-1.5 transition-colors disabled:opacity-50 shadow-sm"
@@ -697,7 +759,7 @@ export const LexiconUploadCenter: React.FC<Props> = ({
                     type="text"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="搜索词汇或释义..."
+                    placeholder="搜索词汇、中文或英文释义..."
                     className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-black/[0.04] rounded-lg text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:bg-white focus:border-slate-400 transition-all"
                   />
                 </div>
@@ -714,41 +776,60 @@ export const LexiconUploadCenter: React.FC<Props> = ({
               </div>
             </div>
 
-            <div className="max-h-96 overflow-y-auto rounded-xl border border-black/[0.04] bg-white">
+            <div className="max-h-96 overflow-y-auto rounded-xl border border-slate-200 bg-white relative">
               <table className="w-full text-left text-xs border-collapse">
-                <thead className="bg-slate-50/80 text-slate-600 sticky top-0 border-b border-black/[0.04]">
+                <thead className="bg-slate-100 text-slate-700 sticky top-0 z-10 border-b border-slate-200 shadow-xs">
                   <tr>
-                    <th className="py-2.5 px-3 font-semibold text-[11px]">韩语 (Hangul)</th>
-                    <th className="py-2.5 px-3 font-semibold text-[11px]">词性/词源</th>
+                    <th className="py-2.5 px-3 font-semibold text-[11px] whitespace-nowrap">韩语 (Hangul)</th>
+                    <th className="py-2.5 px-3 font-semibold text-[11px] whitespace-nowrap">词性 / 汉字</th>
                     <th className="py-2.5 px-3 font-semibold text-[11px]">中文释义</th>
+                    <th className="py-2.5 px-3 font-semibold text-[11px]">英文释义</th>
                     <th className="py-2.5 px-3 font-semibold text-[11px]">实战例句</th>
-                    <th className="py-2.5 px-3 text-right font-semibold text-[11px]">发音</th>
+                    <th className="py-2.5 px-3 text-right font-semibold text-[11px] whitespace-nowrap">操作</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y divide-slate-100 bg-white">
                   {displayedWords.map(item => (
-                    <tr key={item.id} className="hover:bg-slate-50/60 transition-colors">
-                      <td className="py-2.5 px-3">
+                    <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
+                      <td className="py-2.5 px-3 whitespace-nowrap">
                         <span className="font-semibold text-slate-900">{item.hangul || item.word}</span>
                       </td>
-                      <td className="py-2.5 px-3 text-slate-500 text-[11px]">
+                      <td className="py-2.5 px-3 text-slate-500 text-[11px] whitespace-nowrap">
                         <span>{item.type}</span>
                         {item.hanja_or_root && (
-                          <span className="ml-1 text-slate-400">({item.hanja_or_root})</span>
+                          <span className="ml-1 text-slate-400 font-serif">({item.hanja_or_root})</span>
                         )}
                       </td>
                       <td className="py-2.5 px-3 text-slate-800 font-medium">{item.meaning_zh}</td>
-                      <td className="py-2.5 px-3 text-slate-500 text-[11px] max-w-xs truncate" title={item.example_kr}>
+                      <td className="py-2.5 px-3 text-slate-500 text-[11px] font-sans">
+                        {item.meaning_en ? (
+                          <span className="text-slate-600">{item.meaning_en}</span>
+                        ) : (
+                          <span className="text-slate-300">-</span>
+                        )}
+                      </td>
+                      <td className="py-2.5 px-3 text-slate-500 text-[11px] max-w-xs truncate" title={`${item.example_kr || ''} ${item.example_zh || ''}`}>
                         {item.example_kr || '-'}
                       </td>
-                      <td className="py-2.5 px-3 text-right">
-                        <button
-                          type="button"
-                          onClick={() => speakKorean(item.hangul || item.word)}
-                          className="p-1 rounded text-slate-400 hover:text-slate-900 hover:bg-slate-100 transition-colors"
-                        >
-                          <Volume2 size={13} />
-                        </button>
+                      <td className="py-2.5 px-3 text-right whitespace-nowrap">
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            type="button"
+                            onClick={() => speakKorean(item.hangul || item.word)}
+                            className="p-1 rounded text-slate-400 hover:text-slate-900 hover:bg-slate-100 transition-colors"
+                            title="朗读发音"
+                          >
+                            <Volume2 size={13} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setEditingWord(item)}
+                            className="p-1 rounded text-slate-400 hover:text-slate-900 hover:bg-slate-100 transition-colors"
+                            title="编辑词条"
+                          >
+                            <Edit3 size={13} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -791,6 +872,123 @@ export const LexiconUploadCenter: React.FC<Props> = ({
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Edit Single Word Modal */}
+      {editingWord && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl p-5 max-w-md w-full shadow-xl border border-black/[0.06] space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <h4 className="text-sm font-semibold text-slate-900">编辑词条信息</h4>
+                <p className="text-[11px] text-slate-400">精确修正中英文释义与例句</p>
+              </div>
+              <button
+                onClick={() => setEditingWord(null)}
+                className="text-slate-400 hover:text-slate-600 p-1"
+              >
+                <X size={15} />
+              </button>
+            </div>
+            
+            <div className="space-y-3 text-xs">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[11px] font-medium text-slate-600 block mb-1">
+                    韩语单词 (Hangul)
+                  </label>
+                  <input
+                    type="text"
+                    value={editingWord.hangul || editingWord.word}
+                    onChange={(e) => setEditingWord({ ...editingWord, hangul: e.target.value, word: e.target.value })}
+                    className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 font-semibold focus:outline-none focus:bg-white focus:border-slate-800"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-medium text-slate-600 block mb-1">
+                    词性 (POS)
+                  </label>
+                  <input
+                    type="text"
+                    value={editingWord.type || ''}
+                    onChange={(e) => setEditingWord({ ...editingWord, type: e.target.value })}
+                    className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:outline-none focus:bg-white focus:border-slate-800"
+                    placeholder="如：명사 (名词)"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[11px] font-medium text-slate-600 block mb-1">
+                  中文释义 (Chinese)
+                </label>
+                <input
+                  type="text"
+                  value={editingWord.meaning_zh || ''}
+                  onChange={(e) => setEditingWord({ ...editingWord, meaning_zh: e.target.value })}
+                  className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:bg-white focus:border-slate-800"
+                  placeholder="如：家务，家事"
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] font-medium text-slate-600 block mb-1">
+                  英文释义 (English)
+                </label>
+                <input
+                  type="text"
+                  value={editingWord.meaning_en || ''}
+                  onChange={(e) => setEditingWord({ ...editingWord, meaning_en: e.target.value })}
+                  className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:bg-white focus:border-slate-800"
+                  placeholder="如：housework, domestic chores"
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] font-medium text-slate-600 block mb-1">
+                  韩语例句
+                </label>
+                <textarea
+                  rows={2}
+                  value={editingWord.example_kr || ''}
+                  onChange={(e) => setEditingWord({ ...editingWord, example_kr: e.target.value })}
+                  className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:outline-none focus:bg-white focus:border-slate-800 resize-none"
+                  placeholder="韩语例句..."
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] font-medium text-slate-600 block mb-1">
+                  例句翻译
+                </label>
+                <input
+                  type="text"
+                  value={editingWord.example_zh || ''}
+                  onChange={(e) => setEditingWord({ ...editingWord, example_zh: e.target.value })}
+                  className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:outline-none focus:bg-white focus:border-slate-800"
+                  placeholder="中文例句翻译..."
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setEditingWord(null)}
+                className="px-3.5 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveWordEdit}
+                className="px-4 py-1.5 text-xs font-semibold bg-slate-900 text-white hover:bg-black rounded-lg transition-colors shadow-sm"
+              >
+                保存修改
+              </button>
+            </div>
           </div>
         </div>
       )}

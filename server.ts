@@ -55,12 +55,17 @@ async function callGeminiREST(params: {
   imageBase64?: string;
   imageMime?: string;
 }): Promise<string> {
-  const apiKey = (params.apiKey || '').replace(/[^\x00-\x7F]/g, '').trim();
+  const apiKey = (params.apiKey || '').replace(/[\u200B-\u200D\uFEFF]/g, '').replace(/["'`]/g, '').trim();
   if (!apiKey) {
     throw new Error("NO_API_KEY");
   }
 
-  const requestedModel = (params.model?.trim() || "gemini-2.0-flash").replace(/^models\//, "");
+  // Detect accidental OpenAI/DeepSeek keys
+  if (apiKey.startsWith("sk-")) {
+    throw new Error("检测到填入的 API Key 以 \"sk-\" 开头（属于 OpenAI / DeepSeek / 代理中转格式），请在设置中切换 LLM 服务商为 OpenAI 或 DeepSeek。");
+  }
+
+  const requestedModel = (params.model?.trim() || "gemini-2.5-flash").replace(/^models\//, "");
   const customBase = params.baseURL?.trim();
   
   // Normalize base URL
@@ -111,11 +116,11 @@ async function callGeminiREST(params: {
 
   const uniqueModelsToTry = Array.from(new Set([
     requestedModel,
+    "gemini-2.5-flash",
+    "gemini-2.0-flash",
     "gemini-3.7-flash",
     "gemini-3.6-flash",
     "gemini-flash-latest",
-    "gemini-2.5-flash",
-    "gemini-2.0-flash",
     "gemini-1.5-flash",
     "gemini-3.1-flash-lite",
     "gemini-3.1-pro-preview"
@@ -124,16 +129,17 @@ async function callGeminiREST(params: {
   const cleanKey = apiKey.trim();
   let lastError: any = null;
 
-  // Google AI Studio API Keys start with "AQ." (new Auth key format) or "AIzaSy..." (classic format).
-  // For AQ. Auth Keys and AIzaSy keys, x-goog-api-key header is the primary official Google standard.
+  // Google AI Studio Auth Keys start with "AQ." (new standard format) and "AIzaSy..." (classic format).
+  // They are API Keys (not OAuth tokens) and must use x-goog-api-key header and/or ?key= query parameter.
+  // ONLY ya29. tokens are Google OAuth 2.0 access tokens that require Authorization: Bearer.
   const isOAuthToken = cleanKey.startsWith("ya29.");
   const authStrategies = isOAuthToken
     ? [
-        { type: "bearer", label: "OAuth Bearer" },
-        { type: "apikey_header", label: "API Key (Header x-goog-api-key)" },
-        { type: "apikey_param", label: "API Key (Query param)" }
+        { type: "bearer", label: "OAuth Bearer (ya29.)" },
+        { type: "apikey_both", label: "API Key (Query & Header)" }
       ]
     : [
+        { type: "apikey_both", label: "API Key (Query & Header)" },
         { type: "apikey_header", label: "API Key (Header x-goog-api-key)" },
         { type: "apikey_param", label: "API Key (Query param)" }
       ];
@@ -154,8 +160,9 @@ async function callGeminiREST(params: {
         } else {
           url = `${baseEndpoint}/models/${model}:generateContent`;
         }
-      } else if (strategy.type === "apikey_param") {
-        // Standard official Google Gemini API key approach via query parameter
+      } else if (strategy.type === "apikey_both") {
+        // Standard official Google Gemini API approach: include key in query AND header
+        headers["x-goog-api-key"] = cleanKey;
         if (baseEndpoint.includes(":generateContent")) {
           url = baseEndpoint.includes("?")
             ? `${baseEndpoint}&key=${encodeURIComponent(cleanKey)}`
@@ -165,7 +172,18 @@ async function callGeminiREST(params: {
         } else {
           url = `${baseEndpoint}/models/${model}:generateContent?key=${encodeURIComponent(cleanKey)}`;
         }
-      } else if (strategy.type === "apikey_header") {
+      } else if (strategy.type === "apikey_param") {
+        if (baseEndpoint.includes(":generateContent")) {
+          url = baseEndpoint.includes("?")
+            ? `${baseEndpoint}&key=${encodeURIComponent(cleanKey)}`
+            : `${baseEndpoint}?key=${encodeURIComponent(cleanKey)}`;
+        } else if (baseEndpoint.includes("/models/")) {
+          url = `${baseEndpoint}:generateContent?key=${encodeURIComponent(cleanKey)}`;
+        } else {
+          url = `${baseEndpoint}/models/${model}:generateContent?key=${encodeURIComponent(cleanKey)}`;
+        }
+      } else {
+        // apikey_header only
         headers["x-goog-api-key"] = cleanKey;
         if (baseEndpoint.includes(":generateContent")) {
           url = baseEndpoint;
@@ -173,18 +191,6 @@ async function callGeminiREST(params: {
           url = `${baseEndpoint}:generateContent`;
         } else {
           url = `${baseEndpoint}/models/${model}:generateContent`;
-        }
-      } else {
-        // apikey_both
-        headers["x-goog-api-key"] = cleanKey;
-        if (baseEndpoint.includes(":generateContent")) {
-          url = baseEndpoint.includes("?")
-            ? `${baseEndpoint}&key=${encodeURIComponent(cleanKey)}`
-            : `${baseEndpoint}?key=${encodeURIComponent(cleanKey)}`;
-        } else if (baseEndpoint.includes("/models/")) {
-          url = `${baseEndpoint}:generateContent?key=${encodeURIComponent(cleanKey)}`;
-        } else {
-          url = `${baseEndpoint}/models/${model}:generateContent?key=${encodeURIComponent(cleanKey)}`;
         }
       }
 
@@ -207,7 +213,7 @@ async function callGeminiREST(params: {
 
           if (res.status === 401 || (res.status === 400 && (errorDetail.includes("API_KEY_INVALID") || errorDetail.includes("API key not valid") || errorDetail.includes("ACCESS_TOKEN_TYPE_UNSUPPORTED") || errorDetail.includes("invalid authentication")))) {
             lastError = new Error(`Google Gemini 鉴权响应 (${res.status}): ${errorDetail}`);
-            // If Bearer failed, continue to next strategy (such as query param or header)
+            // Continue to next strategy
             continue;
           }
 
@@ -710,7 +716,7 @@ app.post("/api/test-llm", async (req, res) => {
     console.error("Test LLM error:", err);
     let errMsg = err?.message || "连接测试失败";
     if (errMsg.includes("OAuth 2 access token") || errMsg.includes("invalid authentication credentials") || (errMsg.includes("401") && errMsg.includes("Gemini"))) {
-      errMsg = "Google Gemini 鉴权失败 (401)：当前 API Key 无效或未开通 Generative Language 权限。请在 aistudio.google.com 重新创建标准 API Key（选择 Create in new project），或直接清空输入框使用系统预置环境。";
+      errMsg = "Google Gemini 鉴权失败 (401)：密钥鉴权未通过。请检查 API Key 复制是否完整，或确认该 Key 是否已开通对应权限。";
     }
     res.status(500).json({ ok: false, error: errMsg });
   }

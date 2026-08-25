@@ -1,6 +1,6 @@
 import * as pdfjsLib from 'pdfjs-dist';
 import { VocabItem } from '../types';
-import { sanitizeVocabItem } from './koreanDictionary';
+import { sanitizeVocabItem, cleanAndSeparateDefinitions } from './koreanDictionary';
 
 // Set up PDF.js worker using public unpkg CDN or inline
 if (typeof window !== 'undefined') {
@@ -202,31 +202,16 @@ export function parseTextLineToVocabItem(
     return null;
   }
 
-  // Clean meaning and prune giant run-on paragraphs
-  if (!meaningZh || meaningZh.length < 1) {
-    meaningZh = '词汇标准释义';
-  } else {
-    meaningZh = meaningZh
-      .replace(/^[:：\-—=\s]+/, '')
-      .replace(/\s+/g, ' ')
-      .trim();
-
-    // If meaning is too long (> 60 chars) or contains noisy UI instructions, trim to the primary definitions
-    if (meaningZh.length > 60) {
-      const firstSentence = meaningZh.split(/[。；;!！\n]/)[0];
-      if (firstSentence && firstSentence.length >= 2 && firstSentence.length <= 40) {
-        meaningZh = firstSentence.trim();
-      } else {
-        meaningZh = meaningZh.substring(0, 45).trim() + '...';
-      }
-    }
-  }
+  // Clean meaning, strip trailing counts/numbers, and separate Chinese/English
+  const { meaning_zh: cleanZh, meaning_en: cleanEn } = cleanAndSeparateDefinitions(meaningZh, hangul);
+  meaningZh = cleanZh || '常用词汇';
+  meaningEn = meaningEn || cleanEn;
 
   // Auto-detect POS from Korean suffix if default
   if (pos === '명사 (名词)') {
     if (hangul.includes(' ') && (hangul.endsWith('하다') || hangul.endsWith('내다') || hangul.endsWith('먹다') || hangul.endsWith('보다') || hangul.endsWith('가다') || hangul.endsWith('오다'))) {
       pos = '관용구 (搭配/短语)';
-    } else if (hangul.endsWith('하다') || hangul.endsWith('되다') || hangul.endsWith('거리다') || hangul.endsWith('다') && !hangul.endsWith('스럽다') && !hangul.endsWith('롭다')) {
+    } else if (hangul.endsWith('하다') || hangul.endsWith('되다') || hangul.endsWith('거리다') || (hangul.endsWith('다') && !hangul.endsWith('스럽다') && !hangul.endsWith('롭다'))) {
       pos = '동사 (动词)';
     } else if (hangul.endsWith('스럽다') || hangul.endsWith('롭다') || hangul.endsWith('답다') || (hangul.endsWith('다') && (meaningZh.includes('的') || meaningZh.includes('感到')))) {
       pos = '형용사 (形容词)';
@@ -251,7 +236,7 @@ export function parseTextLineToVocabItem(
     romanization: pronunciation || undefined,
     type: pos,
     meaning_zh: meaningZh,
-    meaning_en: meaningEn || meaningZh,
+    meaning_en: meaningEn || '',
     category: category,
     level: bookTitle.includes('延世') ? 'Yonsei' : bookTitle.includes('TOPIK') ? 'TOPIK' : 'Custom',
     source: bookTitle,

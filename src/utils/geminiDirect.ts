@@ -48,9 +48,9 @@ function getGeminiAuthStrategies(cleanKey: string): GeminiAuthStrategy[] {
         getUrl: (base, model) => `${base}/models/${model}:generateContent`
       },
       {
-        type: 'header',
+        type: 'query',
         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': cleanKey },
-        getUrl: (base, model) => `${base}/models/${model}:generateContent`
+        getUrl: (base, model, key) => `${base}/models/${model}:generateContent?key=${encodeURIComponent(key)}`
       }
     ];
   }
@@ -58,18 +58,13 @@ function getGeminiAuthStrategies(cleanKey: string): GeminiAuthStrategy[] {
   // Google AI Studio Auth Keys (AQ...) and Standard Keys (AIzaSy...)
   return [
     {
-      type: 'header',
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': cleanKey },
-      getUrl: (base, model) => `${base}/models/${model}:generateContent`
-    },
-    {
       type: 'query',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': cleanKey },
       getUrl: (base, model, key) => `${base}/models/${model}:generateContent?key=${encodeURIComponent(key)}`
     },
     {
-      type: 'bearer',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${cleanKey}` },
+      type: 'header',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': cleanKey },
       getUrl: (base, model) => `${base}/models/${model}:generateContent`
     }
   ];

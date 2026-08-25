@@ -1,6 +1,7 @@
 /**
  * High-Accuracy Standard Korean-Chinese Comprehensive Dictionary & Sanitizer
- * Corrects OCR errors, corrupted Hanja table dumps, and generates authentic native Korean examples.
+ * Corrects OCR errors, corrupted Hanja table dumps, separates Chinese and English definitions,
+ * removes noise/trailing count numbers, and generates authentic native Korean examples.
  */
 
 export interface DictionaryEntry {
@@ -14,6 +15,7 @@ export interface DictionaryEntry {
 }
 
 export const KOREAN_STANDARD_DICTIONARY: Record<string, DictionaryEntry> = {
+  // Common single-character & high-frequency core words
   '식': {
     word: '식',
     pos: '명사 (名词)',
@@ -49,6 +51,366 @@ export const KOREAN_STANDARD_DICTIONARY: Record<string, DictionaryEntry> = {
     definition_en: 'sashimi; round, times; meeting',
     example_kr: '바닷가 근처 횟집에서 신선한 회를 먹었어요.',
     example_zh: '在海边附近的生鱼片店吃了新鲜的刺身。'
+  },
+  '품': {
+    word: '품',
+    pos: '명사 (名词)',
+    definition_zh: '怀抱、怀里；胸口；做工、工时',
+    definition_en: 'bosom, chest; labor, work',
+    example_kr: '따뜻한 어머니의 품에 편안하게 안겼어요.',
+    example_zh: '安稳地依偎在母亲温暖的怀抱中。'
+  },
+  '금': {
+    word: '금',
+    pos: '명사 (名词)',
+    hanja: '金',
+    definition_zh: '黄金、金子；裂痕、缝隙',
+    definition_en: 'gold; crack, line',
+    example_kr: '값비싼 순금 반지를 생일 선물로 받았어요.',
+    example_zh: '收到了贵重的纯金戒指作为生日礼物。'
+  },
+  '실': {
+    word: '실',
+    pos: '명사 (名词)',
+    hanja: '絲 / 室',
+    definition_zh: '线、缝纫线；房间、室',
+    definition_en: 'thread, yarn; room, chamber',
+    example_kr: '바늘에 실을 꿰어 떨어진 단추를 달았어요.',
+    example_zh: '针穿上线把掉落的纽扣缝上了。'
+  },
+  '방': {
+    word: '방',
+    pos: '명사 (名词)',
+    hanja: '房',
+    definition_zh: '房间、屋子',
+    definition_en: 'room, chamber',
+    example_kr: '주말에 내 방을 깔끔하고 아늑하게 정리했어요.',
+    example_zh: '周末把我的房间整理得干净又温馨。'
+  },
+  '가전제품': {
+    word: '가전제품',
+    pos: '명사 (名词)',
+    hanja: '家電製品',
+    definition_zh: '家用电器、家电',
+    definition_en: 'home appliances, household electric appliances',
+    example_kr: '이사하면서 새로운 가전제품을 여러 개 장만했어요.',
+    example_zh: '搬家时购置了好几样新的家用电器。'
+  },
+  '음악회': {
+    word: '음악회',
+    pos: '명사 (名词)',
+    hanja: '音樂會',
+    definition_zh: '音乐会、演奏会',
+    definition_en: 'concert, music concert',
+    example_kr: '주말 저녁에 감동적인 클래식 음악회를 관람했어요.',
+    example_zh: '周末晚上去观看了感人的古典音乐会。'
+  },
+  '욕실': {
+    word: '욕실',
+    pos: '명사 (名词)',
+    hanja: '浴室',
+    definition_zh: '浴室、盥洗室',
+    definition_en: 'bathroom, shower room',
+    example_kr: '외출에서 돌아와 욕실에서 깨끗이 씻었어요.',
+    example_zh: '外出归来在浴室清洗得干干净净。'
+  },
+  '집안일': {
+    word: '집안일',
+    pos: '명사 (名词)',
+    definition_zh: '家务、家务活、家事',
+    definition_en: 'housework, household chores',
+    example_kr: '주말에는 온 가족이 함께 집안일을 나누어 해요.',
+    example_zh: '周末全家人一起分工做家务。'
+  },
+  '거실': {
+    word: '거실',
+    pos: '명사 (名词)',
+    hanja: '居室',
+    definition_zh: '客厅',
+    definition_en: 'living room',
+    example_kr: '저녁 식사 후 거실에 모여 TV를 보았어요.',
+    example_zh: '吃完晚饭后聚集在客厅看电视。'
+  },
+  '부엌': {
+    word: '부엌',
+    pos: '명사 (名词)',
+    definition_zh: '厨房',
+    definition_en: 'kitchen',
+    example_kr: '부엌에서 맛있는 된장찌개 냄새가 솔솔 풍겨요.',
+    example_zh: '厨房里飘出阵阵美味的大酱汤香味。'
+  },
+  '침실': {
+    word: '침실',
+    pos: '명사 (名词)',
+    hanja: '寢室',
+    definition_zh: '卧室、寝室',
+    definition_en: 'bedroom',
+    example_kr: '아늑한 침실에서 푹 자고 일어났어요.',
+    example_zh: '在温馨的卧室里美美地睡了一觉起来。'
+  },
+  '화장실': {
+    word: '화장실',
+    pos: '명사 (名词)',
+    hanja: '化粧室',
+    definition_zh: '洗手间、卫生间',
+    definition_en: 'restroom, bathroom, toilet',
+    example_kr: '식사 전에 화장실에서 손을 깨끗이 씻으세요.',
+    example_zh: '吃饭前请在洗手间把手洗干净。'
+  },
+  '청소': {
+    word: '청소',
+    pos: '명사 (名词)',
+    hanja: '淸掃',
+    definition_zh: '打扫、清扫、清洁',
+    definition_en: 'cleaning',
+    example_kr: '주말 아침에 방 구석구석을 깨끗하게 청소했어요.',
+    example_zh: '周末早晨把房间各个角落打扫得干干净净。'
+  },
+  '빨래': {
+    word: '빨래',
+    pos: '명사 (名词)',
+    definition_zh: '洗衣服、待洗衣物',
+    definition_en: 'laundry, washing',
+    example_kr: '날씨가 맑아서 빨래가 아주 잘 말라요.',
+    example_zh: '天气晴朗，衣服晒得很快。'
+  },
+  '설거지': {
+    word: '설거지',
+    pos: '명사 (名词)',
+    definition_zh: '洗碗、洗餐具',
+    definition_en: 'dishwashing',
+    example_kr: '식사가 끝난 후 바로 설거지를 마쳤어요.',
+    example_zh: '吃完饭后立刻洗好了碗筷。'
+  },
+  '요리': {
+    word: '요리',
+    pos: '명사 (名词)',
+    hanja: '料理',
+    definition_zh: '料理、做菜、烹饪',
+    definition_en: 'cooking, cuisine, dish',
+    example_kr: '친구들을 초대해서 맛있는 한국 요리를 대접했어요.',
+    example_zh: '邀请朋友们做了一桌美味的韩国料理招待他们。'
+  },
+  '냉장고': {
+    word: '냉장고',
+    pos: '명사 (名词)',
+    hanja: '冰箱 / 冷藏庫',
+    definition_zh: '冰箱、冷藏柜',
+    definition_en: 'refrigerator, fridge',
+    example_kr: '신선한 과일과 채소를 냉장고에 보관했어요.',
+    example_zh: '把新鲜的水果和蔬菜存放在冰箱里。'
+  },
+  '세탁기': {
+    word: '세탁기',
+    pos: '명사 (名词)',
+    hanja: '洗濯機',
+    definition_zh: '洗衣机',
+    definition_en: 'washing machine',
+    example_kr: '세탁기에 빨랫감을 넣고 전원을 켰어요.',
+    example_zh: '把衣服放进洗衣机并按下了电源。'
+  },
+  '에어컨': {
+    word: '에어컨',
+    pos: '명사 (名词)',
+    definition_zh: '空调',
+    definition_en: 'air conditioner',
+    example_kr: '무더운 여름에는 시원한 에어컨 바람이 최고예요.',
+    example_zh: '在酷热的夏天吹凉爽的空调最舒服了。'
+  },
+  '청소기': {
+    word: '청소기',
+    pos: '명사 (名词)',
+    hanja: '淸掃機',
+    definition_zh: '吸尘器',
+    definition_en: 'vacuum cleaner',
+    example_kr: '무선 청소기로 거실 바닥을 간편하게 밀었어요.',
+    example_zh: '用无线吸尘器轻便地吸了客厅地面。'
+  },
+  '전자레인지': {
+    word: '전자레인지',
+    pos: '명사 (名词)',
+    definition_zh: '微波炉',
+    definition_en: 'microwave oven',
+    example_kr: '식은 음식을 전자레인지에 넣고 2분간 데웠어요.',
+    example_zh: '把凉掉的食物放进微波炉加热了2分钟。'
+  },
+  '텔레비전': {
+    word: '텔레비전',
+    pos: '명사 (名词)',
+    definition_zh: '电视、电视机',
+    definition_en: 'television, TV',
+    example_kr: '가족들과 거실에서 재미있는 텔레비전 프로그램을 봤어요.',
+    example_zh: '和家人们在客厅看了有趣的电视节目。'
+  },
+  '컴퓨터': {
+    word: '컴퓨터',
+    pos: '명사 (名词)',
+    definition_zh: '电脑、计算机',
+    definition_en: 'computer',
+    example_kr: '컴퓨터로 과제를 작성하고 자료를 검색했어요.',
+    example_zh: '用电脑写作业并搜索了资料。'
+  },
+  '경영학': {
+    word: '경영학',
+    pos: '명사 (名词)',
+    hanja: '經營學',
+    definition_zh: '管理学、企业管理学、商科',
+    definition_en: 'business administration, management',
+    example_kr: '대학교에서 경영학을 전공하고 있어요.',
+    example_zh: '正在大学主修企业管理学。'
+  },
+  '의학': {
+    word: '의학',
+    pos: '명사 (名词)',
+    hanja: '醫學',
+    definition_zh: '医学',
+    definition_en: 'medical science, medicine',
+    example_kr: '현대 의학의 발전으로 많은 질병이 치료되고 있어요.',
+    example_zh: '随着现代医学的发展，很多疾病都得到了治愈。'
+  },
+  '내과': {
+    word: '내과',
+    pos: '명사 (名词)',
+    hanja: '內科',
+    definition_zh: '内科',
+    definition_en: 'internal medicine',
+    example_kr: '감기 기운이 있어서 근처 내과 병원에 다녀왔어요.',
+    example_zh: '有点感冒症状，去了一趟附近的内科诊所。'
+  },
+  '외과': {
+    word: '외과',
+    pos: '명사 (名词)',
+    hanja: '外科',
+    definition_zh: '外科',
+    definition_en: 'surgery, surgical department',
+    example_kr: '발목을 삐어서 정형외과에서 진료를 받았어요.',
+    example_zh: '扭伤了脚踝在骨外科接受了诊疗。'
+  },
+  '주차장': {
+    word: '주차장',
+    pos: '명사 (名词)',
+    hanja: '駐車場',
+    definition_zh: '停车场',
+    definition_en: 'parking lot, parking garage',
+    example_kr: '지하 주차장에 차를 안전하게 세웠어요.',
+    example_zh: '把车安全地停在了地下停车场。'
+  },
+  '하차': {
+    word: '하차',
+    pos: '명사 (名词)',
+    hanja: '下車',
+    definition_zh: '下车；退出（节目等）',
+    definition_en: 'getting off, disembarkation; departure',
+    example_kr: '다음 정류장에서 하차할 준비를 하세요.',
+    example_zh: '请做好在下一站下车的准备。'
+  },
+  '국적': {
+    word: '국적',
+    pos: '명사 (名词)',
+    hanja: '國籍',
+    definition_zh: '国籍',
+    definition_en: 'nationality, citizenship',
+    example_kr: '출입국 관리소에서 국적과 신분을 확인했어요.',
+    example_zh: '在出入境管理局核实了国籍和身份。'
+  },
+  '입국': {
+    word: '입국',
+    pos: '명사 (名词)',
+    hanja: '入國',
+    definition_zh: '入境、入国',
+    definition_en: 'entry into a country',
+    example_kr: '인천공항을 통해 한국에 무사히 입국했어요.',
+    example_zh: '通过仁川机场顺利入境韩国。'
+  },
+  '서재': {
+    word: '서재',
+    pos: '명사 (名词)',
+    hanja: '書齋',
+    definition_zh: '书房',
+    definition_en: 'study, study room, library',
+    example_kr: '조용한 서재에서 책을 읽으며 여유를 즐겼어요.',
+    example_zh: '在安静的书房里看书享受悠闲时光。'
+  },
+  '보고서': {
+    word: '보고서',
+    pos: '명사 (名词)',
+    hanja: '報告書',
+    definition_zh: '报告、报告书',
+    definition_en: 'report, paper',
+    example_kr: '프로젝트 결과 보고서를 작성하여 팀장님께 제출했어요.',
+    example_zh: '编写了项目结果报告书提交给了组长。'
+  },
+  '식탁': {
+    word: '식탁',
+    pos: '명사 (名词)',
+    hanja: '食卓',
+    definition_zh: '餐桌、饭桌',
+    definition_en: 'dining table',
+    example_kr: '식탁 위에 따뜻한 국과 밥을 차려 놓았어요.',
+    example_zh: '在餐桌上摆好了热气腾腾的汤和米饭。'
+  },
+  '식당가': {
+    word: '식당가',
+    pos: '명사 (名词)',
+    hanja: '食堂街',
+    definition_zh: '美食街、餐厅区',
+    definition_en: 'food court, restaurant street',
+    example_kr: '백화점 지하 식당가에서 다양한 음식을 맛보았어요.',
+    example_zh: '在百货商场地下的美食街品尝了各种各样的美食。'
+  },
+  '해저': {
+    word: '해저',
+    pos: '명사 (名词)',
+    hanja: '海底',
+    definition_zh: '海底',
+    definition_en: 'seabed, sea floor, underwater',
+    example_kr: '해저 탐사를 통해 신비로운 해양 생태계를 발견했어요.',
+    example_zh: '通过海底探险发现了神秘的海洋生态系统。'
+  },
+  '해물': {
+    word: '해물',
+    pos: '명사 (名词)',
+    hanja: '海物',
+    definition_zh: '海鲜、海味',
+    definition_en: 'seafood',
+    example_kr: '신선한 해물이 듬뿍 들어간 해물파전을 먹었어요.',
+    example_zh: '吃了放入大量新鲜海鲜的海鲜葱饼。'
+  },
+  '진동': {
+    word: '진동',
+    pos: '명사 (名词)',
+    hanja: '振動',
+    definition_zh: '震动、振动；（手机）震动模式',
+    definition_en: 'vibration, shaking',
+    example_kr: '수업 중에는 휴대전화를 진동 모드로 바꿔 주세요.',
+    example_zh: '上课期间请将手机切换为震动模式。'
+  },
+  '부동산': {
+    word: '부동산',
+    pos: '명사 (名词)',
+    hanja: '不動産',
+    definition_zh: '不动产、房地产、中介所',
+    definition_en: 'real estate, property agency',
+    example_kr: '자취방을 구하기 위해 근처 부동산에 방문했어요.',
+    example_zh: '为了租独居房去拜访了附近的房产中介。'
+  },
+  '고모': {
+    word: '고모',
+    pos: '명사 (名词)',
+    hanja: '姑母',
+    definition_zh: '姑姑、姑母',
+    definition_en: 'paternal aunt',
+    example_kr: '명절에 고모 댁을 찾아뵙고 인사를 드렸어요.',
+    example_zh: '过节时拜访了姑姑家并向长辈问好。'
+  },
+  '고모부': {
+    word: '고모부',
+    pos: '명사 (名词)',
+    hanja: '姑母夫',
+    definition_zh: '姑父、姑丈',
+    definition_en: "paternal aunt's husband, uncle",
+    example_kr: '고모부께서 친절하게 맛있는 과일을 깎아 주셨어요.',
+    example_zh: '姑父热情地为我削了美味的水果。'
   },
   '가게': {
     word: '가게',
@@ -285,12 +647,129 @@ export const KOREAN_STANDARD_DICTIONARY: Record<string, DictionaryEntry> = {
   }
 };
 
+export interface CleanedDefinitionResult {
+  meaning_zh: string;
+  meaning_en: string;
+}
+
+/**
+ * Intelligent definition cleaner:
+ * 1. Strips out trailing index/count numbers (e.g. "100", "01", "#5", "(100)")
+ * 2. Cleanly separates Chinese definitions from English definitions
+ * 3. Filters out corrupted Hangul-only column dumps (e.g. "경영학, 의학 내과...")
+ */
+export function cleanAndSeparateDefinitions(rawText: string, hangulWord?: string): CleanedDefinitionResult {
+  const wordKey = (hangulWord || '').trim();
+  const dict = KOREAN_STANDARD_DICTIONARY[wordKey];
+
+  if (!rawText || rawText.trim().length === 0) {
+    if (dict) {
+      return { meaning_zh: dict.definition_zh, meaning_en: dict.definition_en || '' };
+    }
+    return { meaning_zh: `${wordKey || '常用词汇'}`, meaning_en: '' };
+  }
+
+  let text = rawText.trim();
+
+  // 1. Remove trailing numbers, rank counters, or page markers (e.g. "100", "Housework 100", "#100", "(50)")
+  text = text.replace(/(?:\s+|[,\-_/|]\s*)(?:\(\d+\)|\[\d+\]|#\d+|No\.\s*\d+|\d+)\s*$/i, '');
+  text = text.replace(/^(\d+[\.、\)\s]+|[①②③④⑤⑥⑦⑧⑨⑩\(\[\{]\d+[\)\]\}]\s*)/, '');
+  text = text.replace(/\b(hobbies|housework|daily|topic|chapter|unit|lesson|section)\s*\d+/gi, '');
+
+  // 2. Check if string is corrupted:
+  // (a) Contains ONLY Hangul and commas/spaces without any Chinese character
+  const hasChinese = /[\u4e00-\u9fa5]/.test(text);
+  const hasHangul = /[\uac00-\ud7a3]/.test(text);
+  const hasEnglish = /[a-zA-Z]{2,}/.test(text);
+
+  // If definition has ONLY Hangul and NO Chinese or English, it is an OCR column misalignment
+  if (hasHangul && !hasChinese && !hasEnglish) {
+    if (dict) {
+      return {
+        meaning_zh: dict.definition_zh,
+        meaning_en: dict.definition_en || ''
+      };
+    }
+    return {
+      meaning_zh: `${wordKey || '常用词汇'}`,
+      meaning_en: ''
+    };
+  }
+
+  // (b) Corrupted Hanja list check (e.g. "人 인 者 자 會 회")
+  if (isCorruptedHanjaList(text)) {
+    if (dict) {
+      return {
+        meaning_zh: dict.definition_zh,
+        meaning_en: dict.definition_en || ''
+      };
+    }
+    return {
+      meaning_zh: `${wordKey || '常用词汇'}`,
+      meaning_en: ''
+    };
+  }
+
+  // 3. Separate Chinese and English definitions
+  let zhPart = '';
+  let enPart = '';
+
+  if (hasChinese && hasEnglish) {
+    // Check if English is at the end: e.g. "家务 Housework" or "家用电器 / Home appliances"
+    const englishMatch = text.match(/[a-zA-Z\s,;'/()\-]+$/);
+    if (englishMatch && englishMatch[0].trim().length >= 2 && englishMatch.index && englishMatch.index > 0) {
+      enPart = englishMatch[0].replace(/^[\s,/|(\-]+|[\s,/|)\-]+$/g, '').trim();
+      zhPart = text.substring(0, englishMatch.index).replace(/[\s,/|(\-]+$/, '').trim();
+    } else {
+      // Split by common delimiters (tabs, slashes, pipes)
+      const parts = text.split(/[\t|/]/);
+      const zhArr: string[] = [];
+      const enArr: string[] = [];
+      for (const p of parts) {
+        const trimmedP = p.trim();
+        if (/[\u4e00-\u9fa5]/.test(trimmedP)) {
+          zhArr.push(trimmedP);
+        } else if (/[a-zA-Z]{2,}/.test(trimmedP)) {
+          enArr.push(trimmedP);
+        }
+      }
+      zhPart = zhArr.join('； ') || text;
+      enPart = enArr.join('; ');
+    }
+  } else if (hasChinese) {
+    zhPart = text;
+    enPart = '';
+  } else if (hasEnglish) {
+    zhPart = '';
+    enPart = text;
+  } else {
+    zhPart = text;
+    enPart = '';
+  }
+
+  // Clean trailing punctuation and numbers
+  zhPart = zhPart.replace(/[\d\s]+$/, '').replace(/^[:：\s]+/, '').trim();
+  enPart = enPart.replace(/[\d\s]+$/, '').replace(/^[:：\s]+/, '').trim();
+
+  // If zhPart is empty or just template, fallback to dict
+  if ((!zhPart || zhPart.length < 1 || zhPart.includes('常用词汇')) && dict) {
+    zhPart = dict.definition_zh;
+    enPart = enPart || dict.definition_en || '';
+  }
+
+  return {
+    meaning_zh: zhPart || (dict ? dict.definition_zh : rawText.replace(/\d+$/, '').trim()),
+    meaning_en: enPart || (dict ? dict.definition_en || '' : '')
+  };
+}
+
 /**
  * Checks if a string contains corrupted Hanja lists like "人 인 者 자 會 회" or OCR junk
  */
 export function isCorruptedHanjaList(text: string): boolean {
   if (!text) return true;
   const trimmed = text.trim();
+  
   // Pattern where Chinese character is followed directly by Korean pronunciation repeatedly: e.g. "人 인 者 자"
   const hanjaKrPairs = trimmed.match(/[\u4e00-\u9fa5]\s*[\uac00-\ud7a3]/g);
   if (hanjaKrPairs && hanjaKrPairs.length >= 2) return true;
@@ -320,44 +799,41 @@ export function sanitizeVocabItem<T extends {
   const wordKey = (item.hangul || item.word || '').trim();
   const dict = KOREAN_STANDARD_DICTIONARY[wordKey];
 
-  let cleanMeaning = item.meaning_zh || '';
+  // 1. Clean and separate Chinese and English definitions
+  const rawMeaningCombined = item.meaning_zh || item.meaning_en || '';
+  const { meaning_zh: cleanMeaningZh, meaning_en: cleanMeaningEn } = cleanAndSeparateDefinitions(
+    rawMeaningCombined,
+    wordKey
+  );
+
   let cleanType = item.type || '명사 (名词)';
   let cleanExampleKr = item.example_kr || '';
   let cleanExampleZh = item.example_zh || '';
   let cleanHanja = item.hanja_or_root || '';
 
-  // 1. Check if meaning is corrupted Hanja list or template noise
-  const corrupted = isCorruptedHanjaList(cleanMeaning);
-
   if (dict) {
-    if (corrupted || cleanMeaning.length < 2) {
-      cleanMeaning = dict.definition_zh;
-    }
     if (!cleanHanja && dict.hanja) {
       cleanHanja = dict.hanja;
     }
-    if (!cleanType || cleanType.includes('어휘') || corrupted) {
+    if (!cleanType || cleanType.includes('어휘')) {
       cleanType = dict.pos;
     }
     // Replace robotic templates: e.g. "식을/를 사용한 실전 표현이에요."
-    if (!cleanExampleKr || cleanExampleKr.includes('사용한 실전 표현') || cleanExampleKr.includes('을/를 사용한')) {
+    if (!cleanExampleKr || cleanExampleKr.includes('사용한 실전 표현') || cleanExampleKr.includes('을/를 사용한') || cleanExampleKr.includes('일상에서')) {
       cleanExampleKr = dict.example_kr;
       cleanExampleZh = dict.example_zh;
     }
   } else {
-    // If not in dict, but has corrupted definition: clean it intelligently
-    if (corrupted) {
-      cleanMeaning = `${wordKey}（韩语常用词汇）`;
-    }
     if (!cleanExampleKr || cleanExampleKr.includes('사용한 실전 표현') || cleanExampleKr.includes('을/를 사용한')) {
       cleanExampleKr = `일상에서 '${wordKey}' 단어를 자연스럽게 활용해 보세요.`;
-      cleanExampleZh = `在日常韩语中自然运用“${cleanMeaning || wordKey}”。`;
+      cleanExampleZh = `在日常韩语中自然运用“${cleanMeaningZh || wordKey}”。`;
     }
   }
 
   return {
     ...item,
-    meaning_zh: cleanMeaning,
+    meaning_zh: cleanMeaningZh,
+    meaning_en: cleanMeaningEn || (item.meaning_en && item.meaning_en !== cleanMeaningZh ? item.meaning_en : ''),
     type: cleanType,
     example_kr: cleanExampleKr,
     example_zh: cleanExampleZh,

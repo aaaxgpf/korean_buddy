@@ -338,52 +338,9 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
         .map(m => m.role === 'user' ? `User: ${m.content}` : `${companion.name_kr || companion.name_ko || 'Idol'}: ${m.korean || m.content}`)
         .filter(Boolean);
 
-      if (apiConfig?.apiKey?.trim()) {
-        try {
-          data = await directSendChat({
-            provider: apiConfig.provider,
-            apiKey: apiConfig.apiKey,
-            model: apiConfig.model,
-            baseURL: apiConfig.baseURL,
-            character: companion,
-            messages: [...contextMessages, userMessage],
-            pinnedMemories,
-            userName: effectiveUserName,
-            userCallSign: effectiveCallSign,
-            userNickname: companion.userNickname,
-            languageMode,
-            imageBase64: imagePayload || undefined,
-            imageMime: undefined,
-            clientTemporal
-          });
-        } catch (directErr: any) {
-          console.warn('Direct chat warning, trying backend endpoint as fallback:', directErr);
-          const res = await fetch('/api/chat', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              character: companion,
-              messages: [...contextMessages, userMessage],
-              pinnedMemories,
-              userName: effectiveUserName,
-              userCallSign: effectiveCallSign,
-              userNickname: companion.userNickname,
-              languageMode,
-              imageBase64: imagePayload,
-              videoLink: videoData?.link,
-              videoInfo: videoData,
-              clientTemporal,
-              apiConfig,
-            }),
-          }).catch(() => null);
-
-          if (res && res.ok) {
-            data = await res.json();
-          } else {
-            throw directErr;
-          }
-        }
-      } else {
+      // 1. Primary architecture: Secure Server-side API Proxy (/api/chat)
+      // Keeps keys hidden, avoids browser CORS/header blocks, and proxies all LLM / Gemini requests
+      try {
         const res = await fetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -403,38 +360,66 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
           }),
         });
 
-        data = await res.json();
-
-        if (!res.ok || data.error) {
-          if (data.error === 'NO_API_KEY') {
-            const alertMsg: ChatMessage = {
-              id: `alert_${Date.now()}`,
-              role: 'assistant',
-              content: '⚠️ 未配置大模型 API Key。请点击右上角「Settings 设置」页面，填入您的 API Key（支持 Gemini / Claude / OpenAI / DeepSeek 等）以开启真实多轮对话。',
-              korean: 'API 키가 필요합니다. 설정(Settings)에서 API 키를 입력해 주세요.',
-              translation_zh: '⚠️ 未配置大模型 API Key。请点击右上角「Settings 设置」页面填入 API Key 开启真实对话。',
-              timestamp: Date.now(),
-              isRead: true,
-            };
-            onUpdateMessages((prev) =>
-              prev.map((m) => (m.id === userMessage.id ? { ...m, isRead: true } : m)).concat(alertMsg)
-            );
-            return;
+        if (res.ok) {
+          data = await res.json();
+        } else {
+          const errData = await res.json().catch(() => ({}));
+          // If server returns NO_API_KEY or explicit error, check if client has custom key to try direct
+          if (apiConfig?.apiKey?.trim()) {
+            data = await directSendChat({
+              provider: apiConfig.provider,
+              apiKey: apiConfig.apiKey,
+              model: apiConfig.model,
+              baseURL: apiConfig.baseURL,
+              character: companion,
+              messages: [...contextMessages, userMessage],
+              pinnedMemories,
+              userName: effectiveUserName,
+              userCallSign: effectiveCallSign,
+              userNickname: companion.userNickname,
+              languageMode,
+              imageBase64: imagePayload || undefined,
+              imageMime: undefined,
+              clientTemporal
+            });
           } else {
-            const errorMsg: ChatMessage = {
-              id: `err_${Date.now()}`,
-              role: 'assistant',
-              content: `⚠️ 请求异常：${data.message || '大模型请求失败，请检查网络或 API 设置'}`,
-              korean: '오류가 발생했습니다. 다시 시度해 주세요.',
-              translation_zh: `⚠️ 请求异常：${data.message || '请检查网络或 API 设置'}`,
-              timestamp: Date.now(),
-              isRead: true,
-            };
-            onUpdateMessages((prev) =>
-              prev.map((m) => (m.id === userMessage.id ? { ...m, isRead: true } : m)).concat(errorMsg)
-            );
-            return;
+            throw new Error(errData.message || errData.error || `Server responded with ${res.status}`);
           }
+        }
+      } catch (proxyErr: any) {
+        console.warn('Backend proxy chat failed, trying client fallback if key present:', proxyErr);
+        if (apiConfig?.apiKey?.trim()) {
+          data = await directSendChat({
+            provider: apiConfig.provider,
+            apiKey: apiConfig.apiKey,
+            model: apiConfig.model,
+            baseURL: apiConfig.baseURL,
+            character: companion,
+            messages: [...contextMessages, userMessage],
+            pinnedMemories,
+            userName: effectiveUserName,
+            userCallSign: effectiveCallSign,
+            userNickname: companion.userNickname,
+            languageMode,
+            imageBase64: imagePayload || undefined,
+            imageMime: undefined,
+            clientTemporal
+          });
+        } else {
+          const alertMsg: ChatMessage = {
+            id: `alert_${Date.now()}`,
+            role: 'assistant',
+            content: '⚠️ 未配置大模型 API Key。请点击右上角「Settings 设置」页面，填入您的 API Key（支持 Gemini / Claude / OpenAI / DeepSeek 等）以开启真实多轮对话。',
+            korean: 'API 키가 필요합니다. 설정(Settings)에서 API 키를 입력해 주세요.',
+            translation_zh: '⚠️ 未配置大模型 API Key。请点击右上角「Settings 设置」页面填入 API Key 开启真实对话。',
+            timestamp: Date.now(),
+            isRead: true,
+          };
+          onUpdateMessages((prev) =>
+            prev.map((m) => (m.id === userMessage.id ? { ...m, isRead: true } : m)).concat(alertMsg)
+          );
+          setIsLoading(false);
+          return;
         }
       }
 

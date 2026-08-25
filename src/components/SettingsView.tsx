@@ -212,7 +212,7 @@ export const SettingsView: React.FC<Props> = ({
     setIsTestingLLM(true);
     setLlmTestStatus(null);
     try {
-      // 1. Try server proxy first to avoid browser CORS issues (especially for DeepSeek/OpenAI)
+      // 1. Test via server proxy first (keeps key secure & avoids CORS/browser restrictions)
       const res = await fetch('/api/test-llm', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -224,13 +224,14 @@ export const SettingsView: React.FC<Props> = ({
         if (res.ok && data.ok) {
           const successMsg = data.message || '大模型已成功响应！';
           setLlmTestStatus({ ok: true, message: successMsg });
-          showSuccessToast('✅ 大模型连接成功', successMsg);
+          showSuccessToast('✅ 连接测试成功', successMsg);
           return;
+        } else if (data.error) {
+          throw new Error(data.error);
         }
-        // If server proxy returned error, we do not abort immediately; continue to client direct test
       }
 
-      // 2. Client direct test (handles regional network routing & direct CORS enabled endpoints)
+      // 2. Client direct test fallback (handles static / direct endpoint cases)
       if (llmConfig.apiKey?.trim()) {
         try {
           const result = await directTestLLMConnection({
@@ -511,15 +512,18 @@ export const SettingsView: React.FC<Props> = ({
                   </a>
                 </div>
                 {!llmConfig.apiKey && (
-                  <p className="text-[11px] text-slate-500 flex items-center gap-1 font-medium">
-                    <span>留空时若服务端配置了环境变量将使用服务端的默认 Key</span>
-                  </p>
+                  <div className="text-[11px] text-emerald-800 bg-emerald-50/80 p-2.5 rounded-xl border border-emerald-200/60 flex items-center justify-between">
+                    <span className="flex items-center gap-1.5 font-medium">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0 animate-pulse"></span>
+                      当前已使用系统预置的 Google Gemini 服务（无需配置 Key 即可正常对话与学习）。
+                    </span>
+                  </div>
                 )}
                 {Boolean(llmConfig.apiKey) && (llmConfig.apiKey.startsWith('AQ.') || llmConfig.apiKey.startsWith('AIzaSy')) && (
                   <div className="text-[11px] text-emerald-800 bg-emerald-50/80 p-2.5 rounded-xl border border-emerald-200/60 flex items-center gap-1.5">
                     <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0"></span>
                     <span>
-                      已识别为 Google AI Studio 密钥（{llmConfig.apiKey.startsWith('AQ.') ? '新版 Auth Key: AQ...' : '标准 Key: AIzaSy...'}），支持所有对话与语言评测。
+                      已识别为 Google AI Studio 官方密钥（{llmConfig.apiKey.startsWith('AQ.') ? '新版 Auth Key: AQ...' : '标准 Key: AIzaSy...'}），支持所有模型与韩语伴学功能。
                     </span>
                   </div>
                 )}
