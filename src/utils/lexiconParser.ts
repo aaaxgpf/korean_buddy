@@ -1,5 +1,6 @@
 import * as pdfjsLib from 'pdfjs-dist';
 import { VocabItem } from '../types';
+import { sanitizeVocabItem } from './koreanDictionary';
 
 // Set up PDF.js worker using public unpkg CDN or inline
 if (typeof window !== 'undefined') {
@@ -242,7 +243,7 @@ export function parseTextLineToVocabItem(
     exampleZh = collocationNote ? `搭配/表达: ${collocationNote}` : `关于“${meaningZh}”的实战表达。`;
   }
 
-  return {
+  return sanitizeVocabItem({
     id: `lex_${Date.now()}_${index}_${Math.random().toString(36).substring(2, 7)}`,
     word: hangul,
     hangul: hangul,
@@ -259,7 +260,7 @@ export function parseTextLineToVocabItem(
     mastery: 'new',
     isBookmarked: false,
     savedAt: Date.now(),
-  };
+  });
 }
 
 /**

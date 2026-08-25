@@ -30,43 +30,49 @@ export interface DirectChatParams {
 }
 
 /**
- * Build correct Gemini generateContent URL based on auth mode
+ * Direct call strategy structure for Google Gemini
  */
-function buildGeminiUrl(baseURL: string | undefined, model: string, apiKey: string, isBearerAuth: boolean): string {
-  let defaultBase = 'https://generativelanguage.googleapis.com/v1beta';
-  const cleanModel = (model || 'gemini-2.0-flash').replace(/^models\//, '');
-  const cleanKey = apiKey.trim();
+interface GeminiAuthStrategy {
+  type: 'header' | 'query' | 'bearer';
+  headers: Record<string, string>;
+  getUrl: (base: string, model: string, key: string) => string;
+}
 
-  if (baseURL && baseURL.trim()) {
-    let baseClean = baseURL.trim().replace(/\/+$/, '');
-    if (baseClean.includes('generativelanguage.googleapis.com') && !baseClean.includes('/v1')) {
-      baseClean = `${baseClean}/v1beta`;
-    }
-    if (isBearerAuth) {
-      if (baseClean.includes(':generateContent')) {
-        return baseClean.split('?')[0];
-      } else if (baseClean.includes('/models/')) {
-        return `${baseClean}:generateContent`;
-      } else {
-        return `${baseClean}/models/${cleanModel}:generateContent`;
+function getGeminiAuthStrategies(cleanKey: string): GeminiAuthStrategy[] {
+  const isOAuth = cleanKey.startsWith('ya29.');
+  if (isOAuth) {
+    return [
+      {
+        type: 'bearer',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${cleanKey}` },
+        getUrl: (base, model) => `${base}/models/${model}:generateContent`
+      },
+      {
+        type: 'header',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': cleanKey },
+        getUrl: (base, model) => `${base}/models/${model}:generateContent`
       }
-    } else {
-      if (baseClean.includes(':generateContent')) {
-        return baseClean.includes('?')
-          ? `${baseClean}&key=${encodeURIComponent(cleanKey)}`
-          : `${baseClean}?key=${encodeURIComponent(cleanKey)}`;
-      } else if (baseClean.includes('/models/')) {
-        return `${baseClean}:generateContent?key=${encodeURIComponent(cleanKey)}`;
-      } else {
-        return `${baseClean}/models/${cleanModel}:generateContent?key=${encodeURIComponent(cleanKey)}`;
-      }
-    }
+    ];
   }
 
-  if (isBearerAuth) {
-    return `${defaultBase}/models/${cleanModel}:generateContent`;
-  }
-  return `${defaultBase}/models/${cleanModel}:generateContent?key=${encodeURIComponent(cleanKey)}`;
+  // Google AI Studio Auth Keys (AQ...) and Standard Keys (AIzaSy...)
+  return [
+    {
+      type: 'header',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': cleanKey },
+      getUrl: (base, model) => `${base}/models/${model}:generateContent`
+    },
+    {
+      type: 'query',
+      headers: { 'Content-Type': 'application/json' },
+      getUrl: (base, model, key) => `${base}/models/${model}:generateContent?key=${encodeURIComponent(key)}`
+    },
+    {
+      type: 'bearer',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${cleanKey}` },
+      getUrl: (base, model) => `${base}/models/${model}:generateContent`
+    }
+  ];
 }
 
 /**
@@ -81,10 +87,10 @@ function formatLLMError(error: any, provider: string, apiKey: string): Error {
       return new Error('Google 鉴权失败：您填入的 API Key 以 "sk-" 开头（属于 OpenAI / DeepSeek / 中转服务商格式）。请在上方切换服务商为 OpenAI、DeepSeek 或 Custom。');
     }
     if (provider === 'gemini' && cleanKey.startsWith('ya29.')) {
-      return new Error('Google OAuth Token 鉴权失败或已过期：填入的临时 OAuth2 Token (ya29.) 有效期已过。建议使用 Google AI Studio (aistudio.google.com/app/apikey) 创建的永久 API Key (以 AQ 或 AIzaSy 开头)。');
+      return new Error('Google OAuth Token 鉴权失败或已过期：填入的临时 OAuth2 Token (ya29.) 有效期已过。建议使用 Google AI Studio (aistudio.google.com/app/apikey) 创建的 API Key (AQ. 或 AIzaSy)。');
     }
     if (provider === 'gemini') {
-      return new Error('Google Gemini API 鉴权失败：请检查填入的 Google AI Studio API Key 是否完整无误。可在 aistudio.google.com/app/apikey 免费获取。');
+      return new Error(`Google Gemini API 鉴权失败 (401)：请检查填入的 Google AI Studio API Key 是否完整无误。`);
     }
     return new Error(`${provider.toUpperCase()} 鉴权失败 (401)：API Key 无效或已过期，请检查填入的 Key 是否正确。`);
   }
@@ -98,7 +104,7 @@ function formatLLMError(error: any, provider: string, apiKey: string): Error {
 
 /**
  * Direct Gemini Connection Test in Browser
- * Automatically supports both standard API Keys (AIzaSy...) and OAuth Access Tokens (AQ.Ab... / ya29...)
+ * Full support for both Google AI Studio Auth keys (AQ.Ab8...), Standard keys (AIzaSy...), and OAuth tokens.
  */
 export async function directTestGeminiConnection(config: DirectGeminiConfig): Promise<{ ok: boolean; message: string; raw?: any }> {
   const cleanKey = (config.apiKey || '').replace(/[^\x00-\x7F]/g, '').trim();
@@ -111,44 +117,39 @@ export async function directTestGeminiConnection(config: DirectGeminiConfig): Pr
     throw new Error('检测到您填入的 API Key 以 "sk-" 开头（属于 OpenAI / DeepSeek / 代理中转 Key 格式）。请在上方【LLM Provider】中切换为【OpenAI】、【DeepSeek】或【Custom (中转)】！');
   }
 
-  // Determine preferred auth strategy: Google AI Studio keys (AQ... or AIzaSy...) are API keys.
-  // Only Google OAuth Access Tokens (ya29...) use Bearer authorization.
-  const isOAuthToken = cleanKey.startsWith('ya29.');
-  const authModes: Array<{ isBearer: boolean }> = isOAuthToken
-    ? [{ isBearer: true }, { isBearer: false }]
-    : [{ isBearer: false }, { isBearer: true }];
-
   // Model fallback chain: try user configured model first, fallback to active modern models
   const candidateModels = [
     config.model?.trim(),
     'gemini-3.7-flash',
     'gemini-3.6-flash',
     'gemini-flash-latest',
+    'gemini-2.5-flash',
+    'gemini-2.0-flash',
+    'gemini-1.5-flash',
     'gemini-3.1-flash-lite',
     'gemini-3.1-pro-preview'
   ].filter(Boolean) as string[];
 
   const uniqueCandidates = Array.from(new Set(candidateModels));
+  const strategies = getGeminiAuthStrategies(cleanKey);
+
+  const baseEndpoint = (config.baseURL?.trim() || 'https://generativelanguage.googleapis.com/v1beta').replace(/\/+$/, '');
 
   let lastError: any = null;
 
-  for (const authMode of authModes) {
+  for (const strategy of strategies) {
     for (const modelName of uniqueCandidates) {
-      const url = buildGeminiUrl(config.baseURL, modelName, cleanKey, authMode.isBearer);
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json'
-      };
-
-      if (authMode.isBearer) {
-        headers['Authorization'] = `Bearer ${cleanKey}`;
-      } else {
-        headers['x-goog-api-key'] = cleanKey;
+      let targetUrl = strategy.getUrl(baseEndpoint, modelName, cleanKey);
+      if (baseEndpoint.includes(':generateContent')) {
+        targetUrl = strategy.type === 'query'
+          ? (baseEndpoint.includes('?') ? `${baseEndpoint}&key=${encodeURIComponent(cleanKey)}` : `${baseEndpoint}?key=${encodeURIComponent(cleanKey)}`)
+          : baseEndpoint;
       }
 
       try {
-        const response = await fetch(url, {
+        const response = await fetch(targetUrl, {
           method: 'POST',
-          headers,
+          headers: strategy.headers,
           body: JSON.stringify({
             contents: [
               {
@@ -171,11 +172,6 @@ export async function directTestGeminiConnection(config: DirectGeminiConfig): Pr
           const errData = await response.json().catch(() => ({}));
           const errMsg = errData?.error?.message || `HTTP ${response.status}`;
           lastError = new Error(errMsg);
-
-          // If auth mode doesn't match, break inner model loop to try the alternative authMode
-          if (errMsg.includes('OAuth 2') || errMsg.includes('ACCESS_TOKEN_TYPE_UNSUPPORTED')) {
-            break;
-          }
 
           if (config.baseURL?.trim()) {
             throw formatLLMError(lastError, 'gemini', cleanKey);
@@ -296,6 +292,9 @@ export async function directSendGeminiChat(params: DirectChatParams): Promise<an
     'gemini-3.7-flash',
     'gemini-3.6-flash',
     'gemini-flash-latest',
+    'gemini-2.5-flash',
+    'gemini-2.0-flash',
+    'gemini-1.5-flash',
     'gemini-3.1-flash-lite',
     'gemini-3.1-pro-preview'
   ]));
@@ -460,32 +459,24 @@ ${pinnedMemoriesSection}
     contents.push({ role, parts });
   }
 
-  // Determine preferred auth strategy: Google AI Studio keys (AQ... or AIzaSy...) are API keys.
-  // Only Google OAuth Access Tokens (ya29...) use Bearer authorization.
-  const isOAuthToken = cleanKey.startsWith('ya29.');
-  const authModes: Array<{ isBearer: boolean }> = isOAuthToken
-    ? [{ isBearer: true }, { isBearer: false }]
-    : [{ isBearer: false }, { isBearer: true }];
+  const strategies = getGeminiAuthStrategies(cleanKey);
+  const baseEndpoint = (params.baseURL?.trim() || 'https://generativelanguage.googleapis.com/v1beta').replace(/\/+$/, '');
 
   let lastError: any = null;
 
-  for (const authMode of authModes) {
+  for (const strategy of strategies) {
     for (const modelToUse of candidateModels) {
-      const url = buildGeminiUrl(params.baseURL, modelToUse, cleanKey, authMode.isBearer);
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json'
-      };
-
-      if (authMode.isBearer) {
-        headers['Authorization'] = `Bearer ${cleanKey}`;
-      } else {
-        headers['x-goog-api-key'] = cleanKey;
+      let targetUrl = strategy.getUrl(baseEndpoint, modelToUse, cleanKey);
+      if (baseEndpoint.includes(':generateContent')) {
+        targetUrl = strategy.type === 'query'
+          ? (baseEndpoint.includes('?') ? `${baseEndpoint}&key=${encodeURIComponent(cleanKey)}` : `${baseEndpoint}?key=${encodeURIComponent(cleanKey)}`)
+          : baseEndpoint;
       }
 
       try {
-        const response = await fetch(url, {
+        const response = await fetch(targetUrl, {
           method: 'POST',
-          headers,
+          headers: strategy.headers,
           body: JSON.stringify({
             contents,
             systemInstruction: {
@@ -502,11 +493,6 @@ ${pinnedMemoriesSection}
           const errData = await response.json().catch(() => ({}));
           const errMsg = errData?.error?.message || `HTTP ${response.status}`;
           lastError = new Error(errMsg);
-
-          // If auth mode mismatch, break inner model loop to try the other auth mode
-          if (errMsg.includes('OAuth 2') || errMsg.includes('ACCESS_TOKEN_TYPE_UNSUPPORTED') || response.status === 401) {
-            break;
-          }
 
           // If custom baseURL is set, do not cycle through standard google endpoints
           if (params.baseURL?.trim()) {

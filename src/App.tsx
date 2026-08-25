@@ -15,6 +15,7 @@ import { ToastContainer } from './components/ToastContainer';
 import { notifyToast, showErrorToast, showSuccessToast, showWarningToast, formatApiErrorMessage } from './utils/toast';
 import { PRESET_COMPANIONS, PROACTIVE_CANDIDATES, getRandomCompanionStatus, getTimeAwareGreeting } from './data/companions';
 import { INITIAL_VOCABULARY } from './data/vocabulary';
+import { sanitizeVocabItem } from './utils/koreanDictionary';
 import { INITIAL_GRAMMAR_CARDS } from './data/grammar';
 import { INITIAL_DICTATION_ITEMS } from './data/dictation';
 import { INITIAL_SPEAKING_TASKS } from './data/speaking';
@@ -148,6 +149,11 @@ export default function App() {
               if (c.status_msg && c.status_msg !== base.status_msg) override.status_msg = c.status_msg;
               if (c.tts_pitch !== undefined && c.tts_pitch !== base.tts_pitch) override.tts_pitch = c.tts_pitch;
               if (c.tts_rate !== undefined && c.tts_rate !== base.tts_rate) override.tts_rate = c.tts_rate;
+              if (c.reply_behavior) override.reply_behavior = c.reply_behavior;
+              if (c.read_delay_seconds !== undefined) override.read_delay_seconds = c.read_delay_seconds;
+              if (c.reply_delay_seconds !== undefined) override.reply_delay_seconds = c.reply_delay_seconds;
+              if (c.no_reply_prob !== undefined) override.no_reply_prob = c.no_reply_prob;
+              if (c.allow_proactive !== undefined) override.allow_proactive = c.allow_proactive;
               
               if (Object.keys(override).length > 0) {
                 overridesMap.set(c.id, override);
@@ -181,11 +187,21 @@ export default function App() {
             status_msg: override.status_msg || preset.status_msg,
             tts_pitch: override.tts_pitch !== undefined ? override.tts_pitch : preset.tts_pitch,
             tts_rate: override.tts_rate !== undefined ? override.tts_rate : preset.tts_rate,
+            reply_behavior: override.reply_behavior || preset.reply_behavior || 'instant',
+            read_delay_seconds: override.read_delay_seconds !== undefined ? override.read_delay_seconds : 1.5,
+            reply_delay_seconds: override.reply_delay_seconds !== undefined ? override.reply_delay_seconds : 3,
+            no_reply_prob: override.no_reply_prob !== undefined ? override.no_reply_prob : 0,
+            allow_proactive: override.allow_proactive !== undefined ? override.allow_proactive : true,
           });
         } else {
           merged.push({
             ...preset,
             customNotes: '',
+            reply_behavior: preset.reply_behavior || 'instant',
+            read_delay_seconds: 1.5,
+            reply_delay_seconds: 3,
+            no_reply_prob: 0,
+            allow_proactive: true,
           });
         }
       }
@@ -217,6 +233,11 @@ export default function App() {
           if (c.status_msg && c.status_msg !== base.status_msg) override.status_msg = c.status_msg;
           if (c.tts_pitch !== undefined && c.tts_pitch !== base.tts_pitch) override.tts_pitch = c.tts_pitch;
           if (c.tts_rate !== undefined && c.tts_rate !== base.tts_rate) override.tts_rate = c.tts_rate;
+          if (c.reply_behavior) override.reply_behavior = c.reply_behavior;
+          if (c.read_delay_seconds !== undefined) override.read_delay_seconds = c.read_delay_seconds;
+          if (c.reply_delay_seconds !== undefined) override.reply_delay_seconds = c.reply_delay_seconds;
+          if (c.no_reply_prob !== undefined) override.no_reply_prob = c.no_reply_prob;
+          if (c.allow_proactive !== undefined) override.allow_proactive = c.allow_proactive;
           
           if (Object.keys(override).length > 0) {
             overrides[c.id] = override;
@@ -324,12 +345,12 @@ export default function App() {
           merged.push(customItem);
         });
 
-        return merged;
+        return merged.map(sanitizeVocabItem);
       }
     } catch (e) {
       console.error('Failed to load vocab', e);
     }
-    return INITIAL_VOCABULARY;
+    return INITIAL_VOCABULARY.map(sanitizeVocabItem);
   });
 
   // Saved Dialogues & LocalStorage
@@ -482,6 +503,7 @@ export default function App() {
         const nowTs = Date.now();
         // Pick an inactive companion who is NOT in the current active chat window AND has not sent a proactive message in the last 45 minutes
         const candidateCompanions = companions.filter(c => {
+          if (c.allow_proactive === false) return false;
           const isNotActive = c.id !== selectedCompanionId || chatView !== 'chat';
           const lastSent = lastProactiveMapRef.current[c.id] || 0;
           const isCool = (nowTs - lastSent) > 45 * 60 * 1000; // minimum 45m cooldown per character
@@ -850,22 +872,22 @@ export default function App() {
                   <div className="text-[10px] font-semibold tracking-wider text-stone-400 uppercase mt-6 mb-2.5 ml-2 font-sans">Buddies</div>
                   <div className="space-y-0.5">
                      {sortedCompanions.map((comp, idx) => {
-                       const unreadCount = unreadMap[comp.id] || 0;
-                       const isSelected = currentCompanion.id === comp.id && chatView === 'chat';
-                       const isLast = idx === sortedCompanions.length - 1;
-                       const nextComp = sortedCompanions[idx + 1];
-                       const isNextSelected = nextComp && currentCompanion.id === nextComp.id && chatView === 'chat';
-                       const chatHistory = companionChatMap[comp.id] || [];
-                       const lastMsg = chatHistory.length > 0 ? chatHistory[chatHistory.length - 1] : null;
+                        const unreadCount = unreadMap[comp.id] || 0;
+                        const isSelected = currentCompanion.id === comp.id && chatView === "chat";
+                        const isLast = idx === sortedCompanions.length - 1;
+                        const nextComp = sortedCompanions[idx + 1];
+                        const isNextSelected = nextComp && currentCompanion.id === nextComp.id && chatView === "chat";
+                        const chatHistory = companionChatMap[comp.id] || [];
+                        const lastMsg = chatHistory.length > 0 ? chatHistory[chatHistory.length - 1] : null;
 
                         return (
                           <React.Fragment key={comp.id}>
                             <div 
                               onClick={() => {
                                 handleSelectCompanion(comp);
-                                setChatView('chat');
+                                setChatView("chat");
                               }}
-                              className={`flex items-center gap-3.5 p-3.5 rounded-2xl hover:bg-stone-100/70 transition-colors cursor-pointer group ${isSelected ? 'bg-stone-100 shadow-2xs' : ''}`}
+                              className={`flex items-center gap-3.5 p-3.5 rounded-2xl hover:bg-stone-100/70 transition-colors cursor-pointer group ${isSelected ? "bg-stone-100 shadow-2xs" : ""}`}
                             >
                               <div className="relative shrink-0">
                                 <CompanionAvatar
@@ -876,39 +898,45 @@ export default function App() {
                                 />
                                 {unreadCount > 0 && (
                                   <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 bg-rose-600 text-white text-[10px] border-2 border-white shadow-xs font-semibold rounded-full flex items-center justify-center">
-                                    {unreadCount > 99 ? '99+' : unreadCount}
+                                    {unreadCount > 99 ? "99+" : unreadCount}
                                   </span>
                                 )}
                               </div>
-                             <div className="flex flex-col flex-1 min-w-0 pb-0.5">
-                               <div className="flex items-center justify-between gap-1.5">
-                                 <span className="font-medium text-[15px] text-stone-900 shrink-0 whitespace-nowrap font-sans">{comp.name_ko || comp.name_kr || comp.remark}</span>
-                                 {lastMsg && (
-                                   <span className="text-[10px] text-stone-400 font-sans shrink-0">
-                                     {formatKakaoMessageTime(lastMsg.timestamp)}
-                                   </span>
-                                 )}
-                               </div>
-                               <span className="text-xs text-stone-500 truncate mt-0.5 leading-snug font-sans">
-                                 {lastMsg ? (
-                                   lastMsg.role === 'user' 
-                                     ? `我: ${lastMsg.content}` 
-                                     : (lastMsg.korean || lastMsg.content)
-                                 ) : comp.status_msg}
-                               </span>
-                             </div>
-                           </div>
+                              <div className="flex flex-col flex-1 min-w-0 pb-0.5">
+                                <div className="flex items-center justify-between gap-1.5">
+                                  <span className="font-medium text-[15px] text-stone-900 shrink-0 whitespace-nowrap font-sans">{comp.name_ko || comp.name_kr || comp.remark}</span>
+                                  {lastMsg && (
+                                    <span className="text-[10px] text-stone-400 font-sans shrink-0">
+                                      {formatKakaoMessageTime(lastMsg.timestamp)}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="mt-0.5 min-w-0">
+                                  {lastMsg ? (
+                                    <p className="text-xs text-stone-500 truncate font-sans leading-snug">
+                                      {lastMsg.role === "user" 
+                                        ? (lastMsg.content || "[사진/동영상]") 
+                                        : (lastMsg.korean || lastMsg.content)}
+                                    </p>
+                                  ) : (
+                                    <p className="text-xs text-stone-400 truncate font-sans leading-snug">
+                                      {comp.status_msg || "온라인"}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
 
-                           {/* iOS Inset Divider: Start after avatar at text edge, subtle 1px border */}
-                           {!isLast && !isSelected && !isNextSelected && (
-                             <div className="ml-[72px] border-b border-black/[0.04] dark:border-white/[0.04] my-0" />
-                           )}
-                         </React.Fragment>
-                       );
-                     })}
-                   </div>
-                 </div>
-              </div>
+                            {/* iOS Inset Divider: Start after avatar at text edge, subtle 1px border */}
+                            {!isLast && !isSelected && !isNextSelected && (
+                              <div className="ml-[72px] border-b border-black/[0.04] dark:border-white/[0.04] my-0" />
+                            )}
+                          </React.Fragment>
+                        );
+                      })}
+                    </div>
+                  </div>
+               </div>
             </div>
 
             {/* Right pane: Chat view */}

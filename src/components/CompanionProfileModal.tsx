@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Camera, Crop } from 'lucide-react';
+import { X, Camera, Crop, Sparkles, Clock, MessageSquareOff } from 'lucide-react';
 import { Companion } from '../types';
 import { CompanionAvatar } from './CompanionAvatar';
 import { AvatarCropModal } from './AvatarCropModal';
@@ -156,6 +156,103 @@ export const CompanionProfileModal: React.FC<Props> = ({ isOpen, onClose, compan
                 className="w-full p-2.5 px-3 text-xs rounded-xl border border-stone-200 bg-stone-50/70 focus:bg-white focus:border-stone-900 focus:ring-1 focus:ring-stone-900 outline-none transition-all resize-none h-20 leading-relaxed"
                 placeholder="在此输入为该角色补充的新增设定（如：专属互动暗号、新关系定位、特定小习惯等）。原设定已在后台作为基础底色，此处仅需填写新加设定，不填则完全遵循原人设。"
               />
+            </div>
+
+            {/* Autonomous & Auto-reply Behavior Setting */}
+            <div className="pt-2 border-t border-stone-100">
+              <label className="block text-xs font-semibold text-stone-700 mb-2">
+                回复风格与拟人节奏 (Auto-reply & Read Behavior)
+              </label>
+              
+              <div className="grid grid-cols-2 gap-2 mb-3">
+                {[
+                  { id: 'instant', label: '秒回模式', desc: '收到消息即刻回复' },
+                  { id: 'random_delay', label: '自然随机延迟', desc: '模拟真人输入打字时间' },
+                  { id: 'read_no_reply', label: '已读不回 / 概率回复', desc: '傲娇/忙碌时已读不回' },
+                  { id: 'busy_schedule', label: '日程模拟模式', desc: '根据练习生日常按时回复' }
+                ].map(mode => (
+                  <button
+                    key={mode.id}
+                    type="button"
+                    onClick={() => setEditingCompanion({
+                      ...editingCompanion,
+                      reply_behavior: mode.id as any
+                    })}
+                    className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                      (editingCompanion.reply_behavior || 'instant') === mode.id
+                        ? 'border-stone-900 bg-stone-900 text-white shadow-xs'
+                        : 'border-stone-200 bg-stone-50/50 hover:bg-stone-100 text-stone-700'
+                    }`}
+                  >
+                    <div className="text-xs font-semibold">{mode.label}</div>
+                    <div className={`text-[10px] mt-0.5 ${(editingCompanion.reply_behavior || 'instant') === mode.id ? 'text-stone-300' : 'text-stone-400'}`}>
+                      {mode.desc}
+                    </div>
+                  </button>
+                ))}
+              </div>
+
+              {/* Delay & Probability fine-tuning */}
+              {editingCompanion.reply_behavior === 'random_delay' && (
+                <div className="bg-stone-50 p-2.5 rounded-xl border border-stone-200/80 mb-3 space-y-2">
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="text-stone-600 font-medium">随机回复延迟:</span>
+                    <span className="font-semibold text-stone-900">{editingCompanion.reply_delay_seconds || 3} 秒</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="1"
+                    max="15"
+                    step="1"
+                    value={editingCompanion.reply_delay_seconds || 3}
+                    onChange={e => setEditingCompanion({
+                      ...editingCompanion,
+                      reply_delay_seconds: parseInt(e.target.value, 10)
+                    })}
+                    className="w-full accent-stone-900 cursor-pointer"
+                  />
+                  <div className="text-[10px] text-stone-400">模拟偶像打字构思时间，更有真实陪伴感</div>
+                </div>
+              )}
+
+              {editingCompanion.reply_behavior === 'read_no_reply' && (
+                <div className="bg-stone-50 p-2.5 rounded-xl border border-stone-200/80 mb-3 space-y-2">
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="text-stone-600 font-medium">已读不回概率 (已读但暂不回复):</span>
+                    <span className="font-semibold text-rose-600">{Math.round((editingCompanion.no_reply_prob ?? 0.3) * 100)}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0.1"
+                    max="0.8"
+                    step="0.05"
+                    value={editingCompanion.no_reply_prob ?? 0.3}
+                    onChange={e => setEditingCompanion({
+                      ...editingCompanion,
+                      no_reply_prob: parseFloat(e.target.value)
+                    })}
+                    className="w-full accent-rose-600 cursor-pointer"
+                  />
+                  <div className="text-[10px] text-stone-400">已读不回时，消息会标记为「已读 (1消失)」，但偶像暂时不回话（可在后续主动打招呼）</div>
+                </div>
+              )}
+
+              {/* Allow proactive trigger switch */}
+              <div className="flex items-center justify-between p-2 rounded-xl bg-stone-50 border border-stone-200/70">
+                <div className="text-xs">
+                  <div className="font-medium text-stone-800">允许该角色发送主动安抚消息</div>
+                  <div className="text-[10px] text-stone-400">闲置时自动发 Bubble / 气泡问候</div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={editingCompanion.allow_proactive !== false}
+                  onChange={e => setEditingCompanion({
+                    ...editingCompanion,
+                    allow_proactive: e.target.checked
+                  })}
+                  className="w-4 h-4 accent-stone-900 rounded cursor-pointer"
+                />
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-3 pt-1">

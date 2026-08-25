@@ -516,9 +516,11 @@ export const SettingsView: React.FC<Props> = ({
                   </p>
                 )}
                 {Boolean(llmConfig.apiKey) && (llmConfig.apiKey.startsWith('AQ.') || llmConfig.apiKey.startsWith('AIzaSy')) && (
-                  <div className="text-[11px] text-emerald-800 bg-emerald-50/80 p-2 rounded-xl border border-emerald-200/60 flex items-center gap-1.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0"></span>
-                    <span>已识别为标准 Google AI Studio API Key 格式（{llmConfig.apiKey.slice(0, 6)}...），支持全功能对话与评测。</span>
+                  <div className="text-[11px] text-emerald-800 bg-emerald-50/80 p-2.5 rounded-xl border border-emerald-200/60 flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0"></span>
+                    <span>
+                      已识别为 Google AI Studio 密钥（{llmConfig.apiKey.startsWith('AQ.') ? '新版 Auth Key: AQ...' : '标准 Key: AIzaSy...'}），支持所有对话与语言评测。
+                    </span>
                   </div>
                 )}
                 {Boolean(llmConfig.apiKey) && llmConfig.apiKey.startsWith('ya29.') && (

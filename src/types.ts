@@ -58,6 +58,12 @@ export interface Companion {
   customAvatarUrl?: string;
   customScenario?: string;
   customNotes?: string;
+  // Reply & Proactive Behavior Settings
+  reply_behavior?: 'instant' | 'random_delay' | 'read_no_reply' | 'busy_schedule'; // 自动回复行为模式
+  read_delay_seconds?: number; // 几秒后显示已读(1消失)
+  reply_delay_seconds?: number; // 几秒后发送回复
+  no_reply_prob?: number; // 已读不回概率 (0-100%)
+  allow_proactive?: boolean; // 是否允许该角色日常主动发消息
   [key: string]: any;
 }
 

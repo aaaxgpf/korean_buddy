@@ -33,9 +33,12 @@ function getAI(): GoogleGenAI {
 
 // Supported fallback model candidates in order of preference (prioritizing high-availability active models)
 const MODEL_CANDIDATES = [
+  "gemini-3.7-flash",
   "gemini-3.6-flash",
   "gemini-flash-latest",
-  "gemini-3.7-flash",
+  "gemini-2.5-flash",
+  "gemini-2.0-flash",
+  "gemini-1.5-flash",
   "gemini-3.1-flash-lite",
   "gemini-3.1-pro-preview",
 ];
@@ -111,6 +114,9 @@ async function callGeminiREST(params: {
     "gemini-3.7-flash",
     "gemini-3.6-flash",
     "gemini-flash-latest",
+    "gemini-2.5-flash",
+    "gemini-2.0-flash",
+    "gemini-1.5-flash",
     "gemini-3.1-flash-lite",
     "gemini-3.1-pro-preview"
   ]));
@@ -119,18 +125,17 @@ async function callGeminiREST(params: {
   let lastError: any = null;
 
   // Google AI Studio API Keys start with "AQ." (new Auth key format) or "AIzaSy..." (classic format).
-  // Only Google OAuth Access Tokens (starting with "ya29.") use Bearer authorization.
+  // For AQ. Auth Keys and AIzaSy keys, x-goog-api-key header is the primary official Google standard.
   const isOAuthToken = cleanKey.startsWith("ya29.");
   const authStrategies = isOAuthToken
     ? [
         { type: "bearer", label: "OAuth Bearer" },
-        { type: "apikey_param", label: "API Key (Query param)" },
-        { type: "apikey_header", label: "API Key (Header only)" }
+        { type: "apikey_header", label: "API Key (Header x-goog-api-key)" },
+        { type: "apikey_param", label: "API Key (Query param)" }
       ]
     : [
-        { type: "apikey_param", label: "API Key (Query param)" },
-        { type: "apikey_header", label: "API Key (Header only)" },
-        { type: "apikey_both", label: "API Key (Query + Header)" }
+        { type: "apikey_header", label: "API Key (Header x-goog-api-key)" },
+        { type: "apikey_param", label: "API Key (Query param)" }
       ];
 
   for (const strategy of authStrategies) {

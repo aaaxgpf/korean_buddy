@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { ChatMessage, VocabItem, GrammarCard, Companion } from '../types';
 import { speakKorean } from '../utils/audio';
+import { sanitizeVocabItem } from '../utils/koreanDictionary';
 import { CompanionAvatar } from './CompanionAvatar';
 
 interface NotebookViewProps {
@@ -249,7 +250,7 @@ export const NotebookView: React.FC<NotebookViewProps> = ({
             </div>
           ) : (
             <div className="bg-white border border-[#E0DED7] rounded-2xl p-6 shadow-xs flex flex-col">
-              {savedVocab.map((item, i) => (
+              {savedVocab.map(sanitizeVocabItem).map((item, i) => (
                 <div
                   key={item.id}
                   className={`py-4 flex items-start justify-between gap-4 font-sans ${

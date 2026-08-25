@@ -20,6 +20,7 @@ import {
 import confetti from 'canvas-confetti';
 import { VocabItem, CustomLexiconBook } from '../types';
 import { PRESET_CUSTOM_BOOKS } from '../data/presetLexicons';
+import { sanitizeVocabItem } from '../utils/koreanDictionary';
 import { speakKorean } from '../utils/audio';
 import { HangulHelper } from './HangulHelper';
 
@@ -52,12 +53,19 @@ export const FlashcardsView: React.FC<FlashcardsViewProps> = ({
     try {
       const saved = localStorage.getItem('korean_buddy_custom_lexicon');
       if (saved) {
-        return JSON.parse(saved);
+        const parsed: CustomLexiconBook[] = JSON.parse(saved);
+        return parsed.map(b => ({
+          ...b,
+          words: b.words ? b.words.map(sanitizeVocabItem) : []
+        }));
       }
     } catch (e) {
       console.error('Failed to load custom lexicon books in FlashcardsView', e);
     }
-    return PRESET_CUSTOM_BOOKS;
+    return PRESET_CUSTOM_BOOKS.map(b => ({
+      ...b,
+      words: b.words ? b.words.map(sanitizeVocabItem) : []
+    }));
   });
 
   const [selectedBookId, setSelectedBookId] = useState<string>('all');
@@ -98,8 +106,19 @@ export const FlashcardsView: React.FC<FlashcardsViewProps> = ({
     return counts;
   }, [vocabulary, customBooks, savedVocabIds]);
 
+  // Source list: If a specific custom book is selected, use its sanitized words
+  const baseVocabPool = React.useMemo(() => {
+    if (selectedBookId !== 'all' && selectedBookId !== 'saved') {
+      const currentBook = customBooks.find((b) => b.id === selectedBookId);
+      if (currentBook && currentBook.words && currentBook.words.length > 0) {
+        return currentBook.words.map(sanitizeVocabItem);
+      }
+    }
+    return vocabulary.map(sanitizeVocabItem);
+  }, [vocabulary, customBooks, selectedBookId]);
+
   // Filter words strictly by Vocab Book
-  const filteredVocab = vocabulary.filter((item) => {
+  const filteredVocab = baseVocabPool.filter((item) => {
     const isBookmarked = savedVocabIds.has(item.id) || savedVocabIds.has(item.word) || item.isBookmarked;
     if (onlyBookmarked && !isBookmarked) return false;
     
@@ -108,11 +127,10 @@ export const FlashcardsView: React.FC<FlashcardsViewProps> = ({
       if (!isBookmarked) return false;
     } else if (selectedBookId !== 'all') {
       const currentBook = customBooks.find(b => b.id === selectedBookId);
-      if (currentBook) {
+      if (currentBook && (!currentBook.words || currentBook.words.length === 0)) {
         const isMatch = 
           item.source === currentBook.title ||
-          item.category === currentBook.category ||
-          (currentBook.words && currentBook.words.some(bw => bw.id === item.id || bw.word === item.word || bw.hangul === item.hangul));
+          item.category === currentBook.category;
         if (!isMatch) return false;
       }
     }

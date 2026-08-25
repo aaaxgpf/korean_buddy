@@ -26,6 +26,7 @@ import confetti from 'canvas-confetti';
 import { VocabItem, CustomLexiconBook, AISeedExpansionResult } from '../types';
 import { parsePDFLexicon, parseJSONLexicon, parseCSVLexicon, parseRawTextLexicon } from '../utils/lexiconParser';
 import { PRESET_CUSTOM_BOOKS } from '../data/presetLexicons';
+import { sanitizeVocabItem } from '../utils/koreanDictionary';
 import { speakKorean } from '../utils/audio';
 import { notifyToast, formatApiErrorMessage } from '../utils/toast';
 
@@ -45,12 +46,19 @@ export const LexiconUploadCenter: React.FC<Props> = ({
     try {
       const saved = localStorage.getItem('korean_buddy_custom_lexicon');
       if (saved) {
-        return JSON.parse(saved);
+        const parsed: CustomLexiconBook[] = JSON.parse(saved);
+        return parsed.map(b => ({
+          ...b,
+          words: b.words ? b.words.map(sanitizeVocabItem) : []
+        }));
       }
     } catch (e) {
       console.error('Failed to load custom lexicon books', e);
     }
-    return PRESET_CUSTOM_BOOKS;
+    return PRESET_CUSTOM_BOOKS.map(b => ({
+      ...b,
+      words: b.words ? b.words.map(sanitizeVocabItem) : []
+    }));
   });
 
   const [selectedBookId, setSelectedBookId] = useState<string>(() => {

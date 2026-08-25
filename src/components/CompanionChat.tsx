@@ -438,6 +438,42 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
         }
       }
 
+      const behavior = companion.reply_behavior || 'instant';
+      
+      // Step 1: Simulate "Read" status timing (1 disappears when read)
+      const readDelayMs = behavior === 'random_delay' 
+        ? Math.min((companion.read_delay_seconds || 1.5) * 1000, 4000)
+        : (behavior === 'read_no_reply' ? 800 : 300);
+
+      await new Promise(r => setTimeout(r, readDelayMs));
+      
+      // Mark user message as read (KakaoTalk '1' disappears)
+      onUpdateMessages((prev) =>
+        prev.map((m) => (m.id === userMessage.id ? { ...m, isRead: true } : m))
+      );
+
+      // Step 2: Check for "Read and No Reply" (已读不回) behavior
+      if (behavior === 'read_no_reply') {
+        const noReplyProb = companion.no_reply_prob ?? 0.3;
+        const roll = Math.random();
+        if (roll < noReplyProb) {
+          // The companion read the message but does not reply right now (realistic busy/sulk moment)
+          setIsLoading(false);
+          return;
+        }
+      }
+
+      // Step 3: Simulate realistic typing / response delay if configured
+      if (behavior === 'random_delay') {
+        const configuredDelaySec = companion.reply_delay_seconds || 3;
+        // add a small jitter ±1s
+        const actualDelayMs = Math.max(1000, (configuredDelaySec + (Math.random() * 2 - 1)) * 1000);
+        await new Promise(r => setTimeout(r, actualDelayMs));
+      } else if (behavior === 'busy_schedule') {
+        // Schedule delay (around 2-4 seconds)
+        await new Promise(r => setTimeout(r, 2500 + Math.random() * 1500));
+      }
+
       const rawKr = data.korean_text || data.korean || data.content || '';
       const pureKorean = rawKr
         .replace(/\([^)]*[\u4e00-\u9fa5]+[^)]*\)/g, '')
@@ -891,7 +927,13 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
         className="flex-1 overflow-y-auto space-y-3 p-3 sm:p-4 bg-transparent"
       >
 
-        {messages.map((msg, index) => {
+        {messages
+          .filter((msg) => {
+            const hasText = (msg.content && msg.content.trim().length > 0) || (msg.korean && msg.korean.trim().length > 0);
+            const hasMedia = !!msg.image || !!msg.videoLink;
+            return hasText || hasMedia;
+          })
+          .map((msg, index) => {
           const isUser = msg.role === 'user';
           const isMsgBookmarked = savedDialogueIds.has(msg.id) || msg.isBookmarked;
 
@@ -1456,24 +1498,6 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
                       </span>
                     </div>
 
-                  </div>
-                )}
-
-                {/* USER AVATAR ON RIGHT */}
-                {isUser && (
-                  <div className="shrink-0 self-start mt-0.5">
-                    <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-stone-900 text-white flex items-center justify-center font-medium text-xs shadow-2xs overflow-hidden border border-stone-200">
-                      {userAvatarSrc ? (
-                        <img
-                          src={userAvatarSrc}
-                          alt={userProfile?.userName || userProfile?.name || 'User'}
-                          referrerPolicy="no-referrer"
-                          className="w-full h-full object-cover rounded-lg"
-                        />
-                      ) : (
-                        <span>{(userProfile?.avatar || userProfile?.userName || userProfile?.name || 'ME').slice(0, 2)}</span>
-                      )}
-                    </div>
                   </div>
                 )}
 
