@@ -132,16 +132,20 @@ async function callGeminiREST(params: {
   // Google AI Studio Auth Keys start with "AQ." (new standard format) and "AIzaSy..." (classic format).
   // They are API Keys (not OAuth tokens) and must use x-goog-api-key header and/or ?key= query parameter.
   // ONLY ya29. tokens are Google OAuth 2.0 access tokens that require Authorization: Bearer.
-  const isOAuthToken = cleanKey.startsWith("ya29.");
-  const authStrategies = isOAuthToken
+  // Try all possible authentication strategies for Google Gemini APIs
+  // Supports AI Studio AQ. tokens, standard AIzaSy keys, ya29 OAuth tokens, and bearer tokens
+  const authStrategies = cleanKey.startsWith("ya29.") || cleanKey.startsWith("AQ.")
     ? [
-        { type: "bearer", label: "OAuth Bearer (ya29.)" },
-        { type: "apikey_both", label: "API Key (Query & Header)" }
+        { type: "bearer", label: "OAuth / Bearer Token" },
+        { type: "apikey_both", label: "API Key (Query & Header)" },
+        { type: "apikey_header", label: "API Key (Header x-goog-api-key)" },
+        { type: "apikey_param", label: "API Key (Query param)" }
       ]
     : [
         { type: "apikey_both", label: "API Key (Query & Header)" },
         { type: "apikey_header", label: "API Key (Header x-goog-api-key)" },
-        { type: "apikey_param", label: "API Key (Query param)" }
+        { type: "apikey_param", label: "API Key (Query param)" },
+        { type: "bearer", label: "Bearer Token" }
       ];
 
   for (const strategy of authStrategies) {

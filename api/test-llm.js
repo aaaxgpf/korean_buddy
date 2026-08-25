@@ -34,42 +34,55 @@ export default async function handler(req, res) {
       });
     }
 
-    // Direct test to Google Generative Language API
-    const testUrl = `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(effectiveKey)}`;
-    const testResp = await fetch(testUrl, {
-      method: "GET",
-      headers: {
-        "x-goog-api-key": effectiveKey,
+    // Direct test to Google Generative Language API with all auth strategies
+    const strategies = [
+      {
+        headers: { "x-goog-api-key": effectiveKey },
+        url: `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(effectiveKey)}`
       },
-    });
-
-    if (!testResp.ok) {
-      const errText = await testResp.text();
-      let parsed;
-      try { parsed = JSON.parse(errText); } catch {}
-      const code = parsed?.error?.code || testResp.status;
-      const msg = parsed?.error?.message || errText;
-
-      if (code === 400 || code === 401 || code === 403) {
-        return res.status(401).json({
-          ok: false,
-          error: `Google Gemini 鉴权失败 (${code})：API Key 无效或未开通权限。`,
-        });
+      {
+        headers: { "Authorization": `Bearer ${effectiveKey}` },
+        url: `https://generativelanguage.googleapis.com/v1beta/models`
+      },
+      {
+        headers: { "x-goog-api-key": effectiveKey },
+        url: `https://generativelanguage.googleapis.com/v1beta/models`
       }
-      return res.status(500).json({
-        ok: false,
-        error: `连接测试失败 (${code}): ${msg}`,
-      });
+    ];
+
+    let lastError = null;
+    for (const strat of strategies) {
+      try {
+        const testResp = await fetch(strat.url, {
+          method: "GET",
+          headers: strat.headers,
+        });
+
+        if (testResp.ok) {
+          const data = await testResp.json();
+          const modelCount = data.models ? data.models.length : 0;
+          return res.status(200).json({
+            ok: true,
+            message: `Google Gemini 官方 API 连接成功！已检测到 ${modelCount} 个可用模型。`,
+            provider: provider || "gemini",
+            model: model || "gemini-2.5-flash",
+          });
+        }
+
+        const errText = await testResp.text();
+        let parsed;
+        try { parsed = JSON.parse(errText); } catch {}
+        const code = parsed?.error?.code || testResp.status;
+        const msg = parsed?.error?.message || errText;
+        lastError = new Error(`Google Gemini 鉴权响应 (${code}): ${msg}`);
+      } catch (err) {
+        lastError = err;
+      }
     }
 
-    const data = await testResp.json();
-    const modelCount = data.models ? data.models.length : 0;
-
-    return res.status(200).json({
-      ok: true,
-      message: `Google Gemini 官方 API 连接成功！已检测到 ${modelCount} 个可用模型。`,
-      provider: provider || "gemini",
-      model: model || "gemini-2.5-flash",
+    return res.status(401).json({
+      ok: false,
+      error: lastError?.message || "Google Gemini 鉴权失败：API Key 无效或未开通权限。",
     });
   } catch (error) {
     console.error("Test LLM Vercel error:", error);

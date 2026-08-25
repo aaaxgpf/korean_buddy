@@ -39,7 +39,7 @@ interface GeminiAuthStrategy {
 }
 
 function getGeminiAuthStrategies(cleanKey: string): GeminiAuthStrategy[] {
-  const isOAuth = cleanKey.startsWith('ya29.');
+  const isOAuth = cleanKey.startsWith('ya29.') || cleanKey.startsWith('AQ.');
   if (isOAuth) {
     return [
       {
@@ -51,11 +51,16 @@ function getGeminiAuthStrategies(cleanKey: string): GeminiAuthStrategy[] {
         type: 'query',
         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': cleanKey },
         getUrl: (base, model, key) => `${base}/models/${model}:generateContent?key=${encodeURIComponent(key)}`
+      },
+      {
+        type: 'header',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': cleanKey },
+        getUrl: (base, model) => `${base}/models/${model}:generateContent`
       }
     ];
   }
 
-  // Google AI Studio Auth Keys (AQ...) and Standard Keys (AIzaSy...)
+  // Google AI Studio Standard Keys (AIzaSy...) & others
   return [
     {
       type: 'query',
@@ -65,6 +70,11 @@ function getGeminiAuthStrategies(cleanKey: string): GeminiAuthStrategy[] {
     {
       type: 'header',
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': cleanKey },
+      getUrl: (base, model) => `${base}/models/${model}:generateContent`
+    },
+    {
+      type: 'bearer',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${cleanKey}` },
       getUrl: (base, model) => `${base}/models/${model}:generateContent`
     }
   ];
