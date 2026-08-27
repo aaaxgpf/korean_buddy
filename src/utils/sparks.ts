@@ -3,7 +3,7 @@ import { CompanionSparkRecord } from '../types';
 export const SPARK_LEVELS = {
   spark: {
     label: '初燃火苗',
-    icon: '✨',
+    icon: '🌱',
     minDays: 1,
     desc: '初次相遇，点燃共同学习的火花',
     color: 'text-amber-500',

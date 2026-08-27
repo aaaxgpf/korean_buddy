@@ -1,10 +1,11 @@
 export type LexiconCategory = 
+  | 'KPOP_FANDOM' 
+  | 'DAILY_CONVERSATION'
+  | 'MZ_SLANG'
   | 'TOPIK_1_2' 
   | 'TOPIK_3_4' 
   | 'TOPIK_5_6' 
-  | 'YONSEI_SEOUL' 
-  | 'KPOP_FANDOM' 
-  | 'MZ_SLANG';
+  | 'YONSEI_SEOUL';
 
 export interface WordItem {
   id: string;

@@ -255,10 +255,10 @@ export const SpeakingView: React.FC<SpeakingViewProps> = ({
                   <div>
                     <h4 className="font-bold text-[#1A1A1A] text-base">
                       {evaluation.score >= 90
-                        ? 'Excellent! 🌟'
+                        ? 'Excellent!'
                         : evaluation.score >= 75
-                        ? 'Good Job! 👏'
-                        : 'Keep Practicing! 💪'}
+                        ? 'Good Job!'
+                        : 'Keep Practicing!'}
                     </h4>
                   </div>
                 </div>

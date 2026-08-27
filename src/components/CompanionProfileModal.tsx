@@ -168,7 +168,8 @@ export const CompanionProfileModal: React.FC<Props> = ({ isOpen, onClose, compan
                 {[
                   { id: 'instant', label: '秒回模式', desc: '收到消息即刻回复' },
                   { id: 'random_delay', label: '自然随机延迟', desc: '模拟真人输入打字时间' },
-                  { id: 'read_no_reply', label: '已读不回 / 概率回复', desc: '傲娇/忙碌时已读不回' },
+                  { id: 'read_no_reply', label: '已读不回 / 傲娇', desc: '已读(1消失)但暂不回复' },
+                  { id: 'unread_busy', label: '未读未回 / 繁忙', desc: '未读(1保留)，排练后回复' },
                   { id: 'busy_schedule', label: '日程模拟模式', desc: '根据练习生日常按时回复' }
                 ].map(mode => (
                   <button
@@ -182,7 +183,7 @@ export const CompanionProfileModal: React.FC<Props> = ({ isOpen, onClose, compan
                       (editingCompanion.reply_behavior || 'instant') === mode.id
                         ? 'border-stone-900 bg-stone-900 text-white shadow-xs'
                         : 'border-stone-200 bg-stone-50/50 hover:bg-stone-100 text-stone-700'
-                    }`}
+                    } ${mode.id === 'busy_schedule' ? 'col-span-2' : ''}`}
                   >
                     <div className="text-xs font-semibold">{mode.label}</div>
                     <div className={`text-[10px] mt-0.5 ${(editingCompanion.reply_behavior || 'instant') === mode.id ? 'text-stone-300' : 'text-stone-400'}`}>
@@ -233,7 +234,32 @@ export const CompanionProfileModal: React.FC<Props> = ({ isOpen, onClose, compan
                     })}
                     className="w-full accent-rose-600 cursor-pointer"
                   />
-                  <div className="text-[10px] text-stone-400">已读不回时，消息会标记为「已读 (1消失)」，但偶像暂时不回话（可在后续主动打招呼）</div>
+                  <div className="text-[10px] text-stone-400">消息会标记为「已读 (1消失)」，模拟暂忙或傲娇</div>
+                </div>
+              )}
+
+              {editingCompanion.reply_behavior === 'unread_busy' && (
+                <div className="bg-stone-50 p-2.5 rounded-xl border border-stone-200/80 mb-3 space-y-2">
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="text-stone-600 font-medium">繁忙概率 (未读1保留):</span>
+                    <span className="font-semibold text-amber-600">{Math.round((editingCompanion.unread_busy_prob ?? 0.3) * 100)}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0.1"
+                    max="0.8"
+                    step="0.05"
+                    value={editingCompanion.unread_busy_prob ?? 0.3}
+                    onChange={e => setEditingCompanion({
+                      ...editingCompanion,
+                      unread_busy_prob: parseFloat(e.target.value)
+                    })}
+                    className="w-full accent-amber-600 cursor-pointer"
+                  />
+                  <div className="text-[10px] text-stone-500 bg-amber-50/80 p-2 rounded-lg border border-amber-200/60">
+                    <span className="font-medium text-amber-900">🛡️ 防长久失联保护：</span>
+                    <span>处于繁忙排练时消息保留未读「1」；至多繁忙 1 轮，后续发送消息或再次发问时偶像必定全部已读并解释补回，绝不长久失联！</span>
+                  </div>
                 </div>
               )}
 

@@ -59,10 +59,11 @@ export interface Companion {
   customScenario?: string;
   customNotes?: string;
   // Reply & Proactive Behavior Settings
-  reply_behavior?: 'instant' | 'random_delay' | 'read_no_reply' | 'busy_schedule'; // 自动回复行为模式
+  reply_behavior?: 'instant' | 'random_delay' | 'read_no_reply' | 'unread_busy' | 'busy_schedule'; // 自动回复行为模式
   read_delay_seconds?: number; // 几秒后显示已读(1消失)
   reply_delay_seconds?: number; // 几秒后发送回复
   no_reply_prob?: number; // 已读不回概率 (0-100%)
+  unread_busy_prob?: number; // 未读未回/繁忙概率 (0-100%)
   allow_proactive?: boolean; // 是否允许该角色日常主动发消息
   [key: string]: any;
 }
@@ -82,6 +83,8 @@ export interface ChatMessage {
   isPinned?: boolean;
   isMemory?: boolean;
   isRead?: boolean;
+  isRecalled?: boolean;
+  recalledAt?: number;
   [key: string]: any;
 }
 
@@ -196,6 +199,18 @@ export interface CompanionSparkRecord {
   totalInteractions: number;
 }
 
+export interface UserActivityHistory {
+  lastUserInteractionTimestamp?: number | null;
+  lastInteractionTimestamp?: number | null;
+  lastUserMessageSnippet?: string;
+  hoursSinceLastUserMessage?: number | null;
+  hoursSinceLastInteraction?: number | null;
+  userMessagesCount?: number;
+  totalMessagesCount?: number;
+  interactionFrequency?: 'high' | 'normal' | 'low' | 'new';
+  summaryZh?: string;
+}
+
 export interface LLMConfig {
   provider: 'anthropic' | 'openai' | 'deepseek' | 'gemini' | 'custom';
   apiKey: string;
@@ -248,6 +263,39 @@ export interface StudyPlan {
   currentDay: number;
   createdAt: number;
   days: StudyPlanDay[];
+}
+
+export interface MomentComment {
+  id: string;
+  authorId: string;
+  authorName: string;
+  authorAvatar?: string;
+  isIdol?: boolean;
+  korean: string;
+  translation_zh?: string;
+  translation_en?: string;
+  timestamp: number;
+}
+
+export interface MomentPost {
+  id: string;
+  authorId: string; // Companion ID or NPC ID
+  authorName: string;
+  authorRemark?: string;
+  authorAvatar: string;
+  isIdol?: boolean;
+  group?: string;
+  content_kr: string;
+  content_zh?: string;
+  content_en?: string;
+  imageUrls?: string[];
+  likes: number;
+  isLiked?: boolean;
+  timestamp: number;
+  sourceTopic?: string;
+  vocabulary?: VocabItem[];
+  grammar_points?: GrammarPointItem[];
+  comments: MomentComment[];
 }
 
 export interface CustomLexiconBook {

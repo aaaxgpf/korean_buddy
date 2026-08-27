@@ -13,7 +13,7 @@ interface Props {
 export const UserProfileModal: React.FC<Props> = ({ isOpen, onClose, profile, onSave }) => {
   const [name, setName] = useState(profile.userName || profile.name || 'User');
   const [userCallSign, setUserCallSign] = useState(profile.userCallSign || '너');
-  const [status, setStatus] = useState(profile.status || '한국어 공부 중! ✨');
+  const [status, setStatus] = useState(profile.status || '한국어 공부 중!');
   const [avatarUrl, setAvatarUrl] = useState(
     profile.avatarUrl || localStorage.getItem('user_profile_avatar') || ''
   );
@@ -188,7 +188,7 @@ export const UserProfileModal: React.FC<Props> = ({ isOpen, onClose, profile, on
                 value={status} 
                 onChange={e => setStatus(e.target.value)}
                 className="w-full px-3 py-2 bg-white border border-stone-200 rounded-xl focus:outline-none focus:border-stone-900 transition text-sm text-stone-900"
-                placeholder="한국어 공부 중! ✨"
+                placeholder="한국어 공부 중!"
               />
             </div>
           </div>

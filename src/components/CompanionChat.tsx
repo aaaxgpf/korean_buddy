@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { 
   Send, 
   Sparkles, 
@@ -18,7 +19,11 @@ import {
   Copy,
   Check,
   Languages,
-  Lightbulb
+  Lightbulb,
+  Undo2,
+  Edit3,
+  ThumbsDown,
+  RefreshCw
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { Companion, ChatMessage, VocabItem, CompanionSparkRecord, UserProfile } from '../types';
@@ -36,6 +41,7 @@ interface CompanionChatProps {
   onSelectCompanion: (companion: Companion) => void;
   companionMessages?: ChatMessage[];
   onUpdateMessages: (updater: (prev: ChatMessage[]) => ChatMessage[]) => void;
+  onMarkAsRead?: (companionId: string) => void;
   onClearChat?: (preservePinned?: boolean) => void;
   onOpenCompanionSelector?: () => void;
   onOpenSparksModal?: () => void;
@@ -87,6 +93,7 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
   onSelectCompanion,
   companionMessages,
   onUpdateMessages,
+  onMarkAsRead,
   onClearChat,
   onOpenCompanionSelector,
   onOpenSparksModal,
@@ -102,6 +109,7 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
 }) => {
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [regeneratingMsgId, setRegeneratingMsgId] = useState<string | null>(null);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [speakingMsgId, setSpeakingMsgId] = useState<string | null>(null);
   const [speakingVocabKey, setSpeakingVocabKey] = useState<string | null>(null);
@@ -110,6 +118,7 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
   
   // Independent toggle state per message: { [msgId]: { zh: boolean, en: boolean, vocab: boolean, grammar: boolean, tip: boolean } }
   const [messageExpandedState, setMessageExpandedState] = useState<Record<string, Record<string, boolean>>>({});
+  const [translatingMsgIds, setTranslatingMsgIds] = useState<Record<string, boolean>>({});
 
   const [chatMode, setChatMode] = useState<'learning' | 'pure'>('learning');
   const [longPressedMsgId, setLongPressedMsgId] = useState<string | null>(null);
@@ -117,8 +126,33 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
   const [toastText, setToastText] = useState<string | null>(null);
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Unsatisfactory Response Recall Modal State
+  const [unsatisfactoryModalMsg, setUnsatisfactoryModalMsg] = useState<ChatMessage | null>(null);
+  const [selectedToneHint, setSelectedToneHint] = useState<string>('');
+  const [customFeedbackText, setCustomFeedbackText] = useState<string>('');
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textInputRef = useRef<HTMLInputElement>(null);
+
+  // Mark messages as read when opening or staying in this chat conversation
+  useEffect(() => {
+    // 1. Trigger unreadMap clear callback
+    if (onMarkAsRead) {
+      onMarkAsRead(companion.id);
+    }
+    
+    // 2. Mark any unread incoming messages in the local list as isRead: true
+    if (companionMessages && companionMessages.some(m => m.isRead === false)) {
+      const timer = setTimeout(() => {
+        onUpdateMessages(prev => {
+          if (!prev.some(m => m.isRead === false)) return prev;
+          return prev.map(m => m.isRead === false ? { ...m, isRead: true } : m);
+        });
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [companion.id, companionMessages?.length, onMarkAsRead]);
 
   // Initialize messages with authentic time-aware welcoming greeting if empty
   useEffect(() => {
@@ -286,6 +320,40 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
     }
   };
 
+  // Auto-translate / fix message Chinese translation on-demand if it lacks Chinese characters
+  const fetchMessageTranslationIfNeeded = async (msg: ChatMessage) => {
+    if (msg.translation_zh && /[\u4e00-\u9fa5]/.test(msg.translation_zh)) {
+      return;
+    }
+    const textToTranslate = msg.korean || msg.content;
+    if (!textToTranslate) return;
+
+    setTranslatingMsgIds(prev => ({ ...prev, [msg.id]: true }));
+    try {
+      let apiConfig = undefined;
+      try {
+        const savedConfig = localStorage.getItem('korean_buddy_api_config');
+        if (savedConfig) apiConfig = JSON.parse(savedConfig);
+      } catch (_) {}
+
+      const res = await fetch('/api/translate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: textToTranslate, targetLang: 'zh', apiConfig })
+      });
+      if (res.ok) {
+        const resData = await res.json();
+        if (resData?.translation && /[\u4e00-\u9fa5]/.test(resData.translation)) {
+          onUpdateMessages(prev => prev.map(m => m.id === msg.id ? { ...m, translation_zh: resData.translation } : m));
+        }
+      }
+    } catch (err) {
+      console.warn('On-demand translation failed', err);
+    } finally {
+      setTranslatingMsgIds(prev => ({ ...prev, [msg.id]: false }));
+    }
+  };
+
   // Send Message
   const handleSendMessage = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -344,6 +412,7 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
         const res = await fetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          signal: AbortSignal.timeout ? AbortSignal.timeout(45000) : undefined,
           body: JSON.stringify({
             character: companion,
             messages: [...contextMessages, userMessage],
@@ -364,7 +433,7 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
           data = await res.json();
         } else {
           const errData = await res.json().catch(() => ({}));
-          // If server returns NO_API_KEY or explicit error, check if client has custom key to try direct
+          // If server returns error, check if client has custom key to try direct
           if (apiConfig?.apiKey?.trim()) {
             data = await directSendChat({
               provider: apiConfig.provider,
@@ -387,57 +456,123 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
           }
         }
       } catch (proxyErr: any) {
-        console.warn('Backend proxy chat failed, trying client fallback if key present:', proxyErr);
+        console.warn('Backend proxy chat failed or timed out, trying fallback:', proxyErr);
         if (apiConfig?.apiKey?.trim()) {
-          data = await directSendChat({
-            provider: apiConfig.provider,
-            apiKey: apiConfig.apiKey,
-            model: apiConfig.model,
-            baseURL: apiConfig.baseURL,
-            character: companion,
-            messages: [...contextMessages, userMessage],
-            pinnedMemories,
-            userName: effectiveUserName,
-            userCallSign: effectiveCallSign,
-            userNickname: companion.userNickname,
-            languageMode,
-            imageBase64: imagePayload || undefined,
-            imageMime: undefined,
-            clientTemporal
-          });
-        } else {
-          const alertMsg: ChatMessage = {
-            id: `alert_${Date.now()}`,
-            role: 'assistant',
-            content: '⚠️ 未配置大模型 API Key。请点击右上角「Settings 设置」页面，填入您的 API Key（支持 Gemini / Claude / OpenAI / DeepSeek 等）以开启真实多轮对话。',
-            korean: 'API 키가 필요합니다. 설정(Settings)에서 API 키를 입력해 주세요.',
-            translation_zh: '⚠️ 未配置大模型 API Key。请点击右上角「Settings 设置」页面填入 API Key 开启真实对话。',
-            timestamp: Date.now(),
-            isRead: true,
+          try {
+            data = await directSendChat({
+              provider: apiConfig.provider,
+              apiKey: apiConfig.apiKey,
+              model: apiConfig.model,
+              baseURL: apiConfig.baseURL,
+              character: companion,
+              messages: [...contextMessages, userMessage],
+              pinnedMemories,
+              userName: effectiveUserName,
+              userCallSign: effectiveCallSign,
+              userNickname: companion.userNickname,
+              languageMode,
+              imageBase64: imagePayload || undefined,
+              imageMime: undefined,
+              clientTemporal
+            });
+          } catch (directErr) {
+            console.warn('Direct send failed as well:', directErr);
+          }
+        }
+        
+        if (!data) {
+          // Fallback response tailored to user query and companion character with Korean machine translation style
+          const charName = companion.name_ko || companion.name_kr || '선우';
+          const charId = companion.id || 'sunwoo';
+          const isSick = /吐|难受|累|痛|困|病|아프|힘들|피곤/.test(userText);
+          const isQuestion = /\?|？|뭐해|어디|누구|왜|干嘛|在哪|是谁|为什么/.test(userText);
+
+          let matchedKr = '';
+          let matchedZh = '';
+          let matchedVocab = [
+            { word: '생각하다', hangul: '생각하다', type: '동사', meaning_zh: '想，思考', meaning_en: 'to think' },
+            { word: '집중하다', hangul: '집중하다', type: '동사', meaning_zh: '集中，专注', meaning_en: 'to focus' }
+          ];
+
+          if (isSick) {
+            matchedKr = `어? 몸 많이 안 좋아?\n생각해보니까 요즘 무리했던 건 아닌지 걱정되네.\n무리해서 답장하지 말고 따뜻한 물 마시고 푹 쉬어.`;
+            matchedZh = `哦？身体很不舒服吗？\n想到最近你是不是太勉强自己了，所以很担心呢。\n不要勉强回复我，去喝点温水好好休息吧。`;
+            matchedVocab = [
+              { word: '무리하다', hangul: '무리하다', type: '동사', meaning_zh: '勉强，过度', meaning_en: 'to overdo' },
+              { word: '걱정되다', hangul: '걱정되다', type: '동사', meaning_zh: '担心，挂念', meaning_en: 'to be worried' }
+            ];
+          } else if (isQuestion) {
+            if (charId === 'sunwoo') {
+              matchedKr = `응? 왜 물어봐 ㅋㅋ\n나 방금 연습 끝나고 쉬는 길에 알림 떠서 확인했지.\n너는 오늘 뭐 하고 있었어?`;
+              matchedZh = `嗯？为什么突然问这个 哈哈\n我刚才结束练习在休息的路上，因为弹了通知所以顺手查看了。\n你今天都在做什么呢？`;
+            } else {
+              matchedKr = `응? 메시지 잘 받았어!\n방금 일정 마치고 쉬는 중이었는데 네 생각나서 답장해.\n오늘 하루는 어땠어?`;
+              matchedZh = `嗯？好好收到你的消息了！\n刚才结束日程正在休息中，因为想到了你所以回复了消息。\n你今天一天过得怎么样？`;
+            }
+          } else {
+            if (charId === 'sunwoo') {
+              matchedKr = `뭐래 진짜 ㅋㅋㅋ 억울하게 사람 몰아가네.\n너는 오늘 뭐 하고 있었는데?`;
+              matchedZh = `说什么呢真是 哈哈 冤枉起人来一套一套的。\n你今天都在做什么呢？`;
+            } else if (charId === 'younghoon') {
+              matchedKr = `응? ㅋㅋㅋ 갑자기 그렇게 말하니까 귀엽네.\n오늘 하루도 고생 많았어.\n맛있는 거 챙겨 먹고 기분 좋게 하루 보내!`;
+              matchedZh = `嗯？哈哈 突然这么说话真可爱呢。\n今天一天也辛苦啦。\n一定要吃点好吃的，心情愉快地度过这一天哦！`;
+            } else {
+              matchedKr = `메시지 잘 확인했어!\n오늘도 너무 무리하지 말고 기분 좋은 하루 보냈으면 좋겠다.\n이따 또 연락할게!`;
+              matchedZh = `好好查看你的消息了！\n今天也希望不要太勉强自己，能够度过心情愉快的一天。\n等下再联系你哦！`;
+            }
+          }
+
+          data = {
+            korean_text: matchedKr,
+            korean: matchedKr,
+            translation_zh: matchedZh,
+            translation_text: matchedZh,
+            vocabulary: matchedVocab,
+            grammar_points: [
+              { pattern: '-(으)니까', title_zh: '表示原因/理由', explanation_zh: '连接词尾，表示因为前句的事实或状态，从而导致后句的结果。' }
+            ],
+            learning_tip: `${charName} 的专属小贴士：多用 -(으)니까 和 -아/어서 来表达生活中的因果感受，会让韩语表达更生动自然！`
           };
-          onUpdateMessages((prev) =>
-            prev.map((m) => (m.id === userMessage.id ? { ...m, isRead: true } : m)).concat(alertMsg)
-          );
-          setIsLoading(false);
-          return;
         }
       }
 
       const behavior = companion.reply_behavior || 'instant';
       
-      // Step 1: Simulate "Read" status timing (1 disappears when read)
+      // Check if there were already unread pending user messages in the chat history
+      const hasPriorUnreadUserMsg = messages.some(m => m.role === 'user' && m.isRead === false);
+
+      // Handle 'unread_busy' (未读未回 / 繁忙状态 - 带防长久失联保护机制)
+      if (behavior === 'unread_busy') {
+        const busyProb = companion.unread_busy_prob ?? 0.3;
+        const isBusyRoll = Math.random() < busyProb;
+
+        // Anti-Infinite-Busy: If already busy on prior turn, force resolution (mark all read + reply)
+        if (isBusyRoll && !hasPriorUnreadUserMsg) {
+          // Enter busy state: message remains UNREAD (Kakao '1' stays) and idol does not reply this instant
+          setIsLoading(false);
+          notifyToast({
+            type: 'info',
+            title: `${companion.remark || companion.name_zh || companion.name_ko} 正在繁忙排练中 ⏳`,
+            message: '消息保留未读「1」。再次发送消息或稍后互动时，对方将统一已读并回复！',
+            duration: 3500
+          });
+          return;
+        }
+      }
+
+      // Step 1: Simulate "Read" status timing (1 unread badge visible with animation, then disappears when read)
       const readDelayMs = behavior === 'random_delay' 
-        ? Math.min((companion.read_delay_seconds || 1.5) * 1000, 4000)
-        : (behavior === 'read_no_reply' ? 800 : 300);
+        ? Math.min((companion.read_delay_seconds || 2) * 1000, 4000)
+        : (behavior === 'read_no_reply' ? 1200 : (behavior === 'busy_schedule' ? 1800 : (behavior === 'unread_busy' ? 1400 : 1000)));
 
       await new Promise(r => setTimeout(r, readDelayMs));
       
-      // Mark user message as read (KakaoTalk '1' disappears)
+      // Mark all pending user messages as read (KakaoTalk '1' disappears with smooth exit animation)
       onUpdateMessages((prev) =>
-        prev.map((m) => (m.id === userMessage.id ? { ...m, isRead: true } : m))
+        prev.map((m) => (m.role === 'user' && !m.isRead ? { ...m, isRead: true } : m))
       );
 
-      // Step 2: Check for "Read and No Reply" (已读不回) behavior
+      // Step 2: Check for "Read and No Reply" (已读不回 / 傲娇模式)
       if (behavior === 'read_no_reply') {
         const noReplyProb = companion.no_reply_prob ?? 0.3;
         const roll = Math.random();
@@ -454,9 +589,9 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
         // add a small jitter ±1s
         const actualDelayMs = Math.max(1000, (configuredDelaySec + (Math.random() * 2 - 1)) * 1000);
         await new Promise(r => setTimeout(r, actualDelayMs));
-      } else if (behavior === 'busy_schedule') {
-        // Schedule delay (around 2-4 seconds)
-        await new Promise(r => setTimeout(r, 2500 + Math.random() * 1500));
+      } else if (behavior === 'busy_schedule' || behavior === 'unread_busy') {
+        // Schedule delay / catch-up delay (around 2-3 seconds)
+        await new Promise(r => setTimeout(r, 2000 + Math.random() * 1000));
       }
 
       const rawKr = data.korean_text || data.korean || data.content || '';
@@ -481,7 +616,7 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
       };
 
       onUpdateMessages((prev) =>
-        prev.map((m) => (m.id === userMessage.id ? { ...m, isRead: true } : m)).concat(assistantMessage)
+        prev.map((m) => (m.role === 'user' && !m.isRead ? { ...m, isRead: true } : m)).concat(assistantMessage)
       );
     } catch (err: any) {
       console.error('Chat error:', err);
@@ -519,9 +654,15 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
     }
   };
 
-  // Re-generate response
-  const handleRegenerateMessage = async (targetMsgId?: string) => {
+  // Re-generate response with optional custom guidance
+  const handleRegenerateMessage = async (targetMsgId?: string, customInstruction?: string) => {
     if (isLoading || messages.length === 0) return;
+
+    // Stop audio if playing
+    if (speakingMsgId) {
+      stopSpeaking();
+      setSpeakingMsgId(null);
+    }
 
     // Find the message index to replace
     let targetIndex = -1;
@@ -543,6 +684,20 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
     const historyBefore = messages.slice(0, targetIndex);
     if (historyBefore.length === 0) return;
 
+    // If custom tone or instruction is provided, incorporate it into the prompt
+    let contextMessages = historyBefore.slice(-10);
+    if (customInstruction?.trim() && contextMessages.length > 0) {
+      const lastUserIdx = contextMessages.map(m => m.role).lastIndexOf('user');
+      if (lastUserIdx !== -1) {
+        contextMessages = contextMessages.map((m, idx) => 
+          idx === lastUserIdx 
+            ? { ...m, content: `${m.content} (【重新作答风格要求】：${customInstruction.trim()})` } 
+            : m
+        );
+      }
+    }
+
+    setRegeneratingMsgId(messages[targetIndex]?.id || targetMsgId || null);
     setIsLoading(true);
 
     const clientTemporal = getClientTemporalContext();
@@ -576,7 +731,7 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
             model: apiConfig.model,
             baseURL: apiConfig.baseURL,
             character: companion,
-            messages: historyBefore.slice(-10),
+            messages: contextMessages,
             pinnedMemories,
             userName: effectiveUserName,
             userCallSign: effectiveCallSign,
@@ -591,7 +746,7 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               character: companion,
-              messages: historyBefore.slice(-10),
+              messages: contextMessages,
               pinnedMemories,
               userName: effectiveUserName,
               userCallSign: effectiveCallSign,
@@ -614,7 +769,7 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             character: companion,
-            messages: historyBefore.slice(-10),
+            messages: contextMessages,
             pinnedMemories,
             userName: effectiveUserName,
             userCallSign: effectiveCallSign,
@@ -658,6 +813,7 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
       console.error('Regenerate error:', err);
     } finally {
       setIsLoading(false);
+      setRegeneratingMsgId(null);
     }
   };
 
@@ -762,6 +918,100 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
     );
     setToastText(isNowPinned ? '已设为核心记忆' : '已取消核心记忆');
     setTimeout(() => setToastText(null), 1800);
+  };
+
+  // Recall user's own message (with option to return content back to input box for easy editing)
+  const handleRecallUserMessage = (msgId: string, returnToInput: boolean = false) => {
+    const targetMsg = messages.find(m => m.id === msgId);
+    if (!targetMsg) return;
+
+    if (returnToInput) {
+      if (targetMsg.content) {
+        setInputText(targetMsg.content);
+      }
+      if (targetMsg.image) {
+        setSelectedImage(targetMsg.image);
+      }
+      // Remove message from chat history
+      onUpdateMessages(prev => prev.filter(m => m.id !== msgId));
+      setTimeout(() => {
+        textInputRef.current?.focus();
+      }, 100);
+      setToastText('已撤回消息，内容已放回输入框');
+    } else {
+      onUpdateMessages((prev) =>
+        prev.map((m) => {
+          if (m.id === msgId) {
+            return {
+              ...m,
+              isRecalled: true,
+              recalledAt: Date.now()
+            };
+          }
+          return m;
+        })
+      );
+      setToastText('已撤回一条消息');
+    }
+    setTimeout(() => setToastText(null), 2000);
+  };
+
+  // Retract unsatisfactory assistant response
+  const handleRetractUnsatisfactoryResponse = (
+    msgId: string, 
+    action: 'edit_prompt' | 'regenerate' | 'delete', 
+    toneHint?: string
+  ) => {
+    // Stop audio if speaking this message
+    if (speakingMsgId === msgId) {
+      stopSpeaking();
+      setSpeakingMsgId(null);
+    }
+
+    const msgIndex = messages.findIndex(m => m.id === msgId);
+    if (msgIndex === -1) return;
+
+    // Find the immediately preceding user message before this assistant response
+    let prevUserIndex = -1;
+    for (let i = msgIndex - 1; i >= 0; i--) {
+      if (messages[i].role === 'user') {
+        prevUserIndex = i;
+        break;
+      }
+    }
+
+    if (action === 'edit_prompt') {
+      if (prevUserIndex !== -1) {
+        const userMsg = messages[prevUserIndex];
+        setInputText(userMsg.content || '');
+        if (userMsg.image) {
+          setSelectedImage(userMsg.image);
+        }
+        // Remove both the assistant message and the preceding user message so user can rephrase cleanly
+        onUpdateMessages(prev => prev.filter((_, idx) => idx !== msgIndex && idx !== prevUserIndex));
+        setTimeout(() => {
+          textInputRef.current?.focus();
+        }, 100);
+        setToastText('已撤回不满意回答，上一条提问已填入输入框');
+      } else {
+        // If no preceding user message found, just remove assistant response
+        onUpdateMessages(prev => prev.filter(m => m.id !== msgId));
+        setToastText('已撤回该条回答');
+      }
+      setTimeout(() => setToastText(null), 2200);
+    } else if (action === 'regenerate') {
+      handleRegenerateMessage(msgId, toneHint);
+      setToastText(toneHint ? `已撤回，正在按「${toneHint}」重新作答...` : '已撤回，正在重新作答...');
+      setTimeout(() => setToastText(null), 2200);
+    } else if (action === 'delete') {
+      onUpdateMessages(prev => prev.filter(m => m.id !== msgId));
+      setToastText('已撤回并删除此回答');
+      setTimeout(() => setToastText(null), 2000);
+    }
+  };
+
+  const handleRecallMessage = (msgId: string) => {
+    handleRecallUserMessage(msgId, false);
   };
 
   const lastAssistantMsgId = (() => {
@@ -954,6 +1204,15 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
                 </div>
               )}
 
+              {/* Recalled Message Display */}
+              {msg.isRecalled ? (
+                <div className="flex justify-center my-2 select-none">
+                  <span className="text-[11px] text-stone-400 bg-stone-100/90 px-3 py-1 rounded-full italic font-sans flex items-center gap-1.5 border border-stone-200/50">
+                    <RotateCcw className="w-3 h-3 text-stone-400" />
+                    <span>你撤回了一条消息</span>
+                  </span>
+                </div>
+              ) : (
               <div
                 className={`flex ${isUser ? 'justify-end' : 'justify-start'} items-end gap-1.5 sm:gap-2 max-w-full group`}
                 onPointerDown={() => { handleTouchStart(msg.id); handleMsgPointerDown(msg); }}
@@ -981,11 +1240,24 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
                   <div className="flex items-end gap-1.5 max-w-[85%] md:max-w-[70%]">
                     {/* Timestamp & Unread (1) at bottom outer left of bubble */}
                     <div className="flex flex-col items-end shrink-0 self-end pb-0.5 select-none font-sans">
-                      {msg.isRead === false && (
-                        <span className="text-[11px] text-[#FEE500] font-bold leading-none mb-0.5" title="未读 (1)">
-                          1
-                        </span>
-                      )}
+                      <AnimatePresence>
+                        {msg.isRead === false && (
+                          <motion.span
+                            key={`unread_marker_${msg.id}`}
+                            initial={{ scale: 0.3, opacity: 0, y: 3 }}
+                            animate={{ scale: 1, opacity: 1, y: 0 }}
+                            exit={{ scale: 0.2, opacity: 0, y: -4, transition: { duration: 0.25, ease: 'easeOut' } }}
+                            className={`text-[11px] font-black leading-none mb-0.5 select-none ${
+                              theme === 'kkt'
+                                ? 'text-[#F59E0B] drop-shadow-[0_1px_1px_rgba(0,0,0,0.18)]'
+                                : 'text-amber-500 font-bold'
+                            }`}
+                            title="未读 (1)"
+                          >
+                            1
+                          </motion.span>
+                        )}
+                      </AnimatePresence>
                       <span className="text-[10px] text-stone-400">
                         {formatKakaoMessageTime(msg.timestamp)}
                       </span>
@@ -1096,6 +1368,21 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
                                 <Volume2 className="w-3.5 h-3.5" />
                               </button>
 
+                              {/* Retract Unsatisfactory Response Button */}
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedToneHint('');
+                                  setCustomFeedbackText('');
+                                  setUnsatisfactoryModalMsg(msg);
+                                }}
+                                className="p-1.5 rounded-full text-stone-400 hover:text-rose-600 hover:bg-rose-50 transition-all cursor-pointer"
+                                title="不满意回答撤回 (Retract & Revise)"
+                              >
+                                <Undo2 className="w-3.5 h-3.5" />
+                              </button>
+
                               {/* Regenerate Button */}
                               <button
                                 type="button"
@@ -1104,10 +1391,10 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
                                   e.stopPropagation();
                                   handleRegenerateMessage(msg.id);
                                 }}
-                                className={`p-1.5 rounded-full text-stone-400 hover:text-stone-800 hover:bg-stone-100 transition-all ${isLoading && isLastAssistant ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                className={`p-1.5 rounded-full text-stone-400 hover:text-stone-800 hover:bg-stone-100 transition-all ${regeneratingMsgId === msg.id ? 'opacity-50 cursor-not-allowed' : ''}`}
                                 title="重新生成回复 (Regenerate)"
                               >
-                                <RotateCcw className={`w-3.5 h-3.5 ${isLoading && isLastAssistant ? 'animate-spin text-stone-700' : ''}`} />
+                                <RotateCcw className={`w-3.5 h-3.5 ${regeneratingMsgId === msg.id ? 'animate-spin text-stone-700' : ''}`} />
                               </button>
 
                               {/* Bookmark */}
@@ -1147,7 +1434,7 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
                               <div className="h-3 w-[1px] bg-stone-200/60 mx-1 shrink-0" />
 
                               {/* Translation Switch Icon Button */}
-                              {(hasZh || hasEn) && (
+                              {(hasZh || hasEn || msg.korean || msg.content) && (
                                 <button
                                   type="button"
                                   onClick={(e) => {
@@ -1169,6 +1456,9 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
                                       });
                                     } else {
                                       const isCurrentlyExpanded = isSectionVisible(msg.id, 'zh');
+                                      if (!isCurrentlyExpanded && (!msg.translation_zh || !/[\u4e00-\u9fa5]/.test(msg.translation_zh))) {
+                                        fetchMessageTranslationIfNeeded(msg);
+                                      }
                                       setMessageExpandedState((prev) => {
                                         const msgState = prev[msg.id] || {};
                                         return {
@@ -1285,9 +1575,30 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
                           </div>
 
                           {/* Expanded Section: Chinese Translation */}
-                          {showZh && msg.translation_zh && (
+                          {showZh && (
                             <div className="border-t border-black/[0.04] mt-2 pt-2 animate-fadeIn font-sans">
-                              <p className="text-[13px] text-slate-500 font-normal leading-relaxed">{msg.translation_zh}</p>
+                              {translatingMsgIds[msg.id] ? (
+                                <div className="flex items-center gap-1.5 text-xs text-slate-400 py-0.5">
+                                  <div className="w-2 h-2 rounded-full bg-slate-400 animate-pulse" />
+                                  <span>正在获取泡泡韩式直译...</span>
+                                </div>
+                              ) : msg.translation_zh && /[\u4e00-\u9fa5]/.test(msg.translation_zh) ? (
+                                <p className="text-[13px] text-slate-500 font-normal leading-relaxed">{msg.translation_zh.replace(/\n+/g, ' ').trim()}</p>
+                              ) : (
+                                <div className="flex items-center justify-between">
+                                  <p className="text-xs text-stone-400">暂无中文翻译</p>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      fetchMessageTranslationIfNeeded(msg);
+                                    }}
+                                    className="text-xs text-stone-700 font-medium hover:underline cursor-pointer"
+                                  >
+                                    🔄 转换为中文直译
+                                  </button>
+                                </div>
+                              )}
                             </div>
                           )}
 
@@ -1299,7 +1610,7 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
                                 <div className="mt-1">
                                   {isSectionVisible(msg.id, 'showCn') ? (
                                     <div className="mt-1 pt-1 border-t border-dashed border-black/[0.02]">
-                                      <p className="text-[13px] text-slate-500 font-normal leading-relaxed">{msg.translation_zh}</p>
+                                      <p className="text-[13px] text-slate-500 font-normal leading-relaxed">{msg.translation_zh.replace(/\n+/g, ' ').trim()}</p>
                                       <button
                                         type="button"
                                         onClick={(e) => {
@@ -1487,6 +1798,7 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
                 )}
 
               </div>
+              )}
             </React.Fragment>
           );
         })}
@@ -1538,6 +1850,7 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
 
           {/* Text Input Field - Clean capsule style */}
           <input
+            ref={textInputRef}
             type="text"
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
@@ -1574,6 +1887,91 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
             </div>
 
             <div className="pt-1.5 space-y-0.5">
+              {/* ASSISTANT MESSAGE ACTIONS */}
+              {activeContextMenuMsg.role === 'assistant' && (
+                <>
+                  {/* Unsatisfied Recall / Re-adjust Response */}
+                  <button
+                    onClick={() => {
+                      const target = activeContextMenuMsg;
+                      setActiveContextMenuMsg(null);
+                      setSelectedToneHint('');
+                      setCustomFeedbackText('');
+                      setUnsatisfactoryModalMsg(target);
+                    }}
+                    className="w-full px-3 py-2 text-left hover:bg-rose-50 rounded-xl flex items-center gap-2.5 text-xs text-rose-600 font-medium transition-colors"
+                  >
+                    <Undo2 className="w-3.5 h-3.5 text-rose-500 stroke-[1.5]" />
+                    <span>不满意撤回 / 调整回答</span>
+                  </button>
+
+                  {/* Quick Shortcut: Recall & Re-edit Prompt */}
+                  <button
+                    onClick={() => {
+                      handleRetractUnsatisfactoryResponse(activeContextMenuMsg.id, 'edit_prompt');
+                      setActiveContextMenuMsg(null);
+                    }}
+                    className="w-full px-3 py-2 text-left hover:bg-stone-50 rounded-xl flex items-center gap-2.5 text-xs text-stone-800 font-medium transition-colors"
+                  >
+                    <Edit3 className="w-3.5 h-3.5 text-stone-500 stroke-[1.5]" />
+                    <span>撤回并重新编辑提问</span>
+                  </button>
+
+                  {/* Regenerate this Response */}
+                  <button
+                    onClick={() => {
+                      handleRegenerateMessage(activeContextMenuMsg.id);
+                      setActiveContextMenuMsg(null);
+                    }}
+                    className="w-full px-3 py-2 text-left hover:bg-stone-50 rounded-xl flex items-center gap-2.5 text-xs text-stone-700 transition-colors"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5 text-stone-500 stroke-[1.5]" />
+                    <span>重新生成此回答</span>
+                  </button>
+
+                  {/* Bookmark Sentence */}
+                  <button
+                    onClick={() => {
+                      onSaveDialogue(activeContextMenuMsg);
+                      setActiveContextMenuMsg(null);
+                    }}
+                    className="w-full px-3 py-2 text-left hover:bg-stone-50 rounded-xl flex items-center gap-2.5 text-xs text-stone-700 transition-colors"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-amber-500/80 stroke-[1.5]" />
+                    <span>{savedDialogueIds.has(activeContextMenuMsg.id) ? '已收藏句子' : '收藏到句库'}</span>
+                  </button>
+                </>
+              )}
+
+              {/* USER MESSAGE ACTIONS */}
+              {activeContextMenuMsg.role === 'user' && !activeContextMenuMsg.isRecalled && (
+                <>
+                  {/* Recall & Return to Input Box */}
+                  <button
+                    onClick={() => {
+                      handleRecallUserMessage(activeContextMenuMsg.id, true);
+                      setActiveContextMenuMsg(null);
+                    }}
+                    className="w-full px-3 py-2 text-left hover:bg-rose-50 rounded-xl flex items-center gap-2.5 text-xs text-rose-600 font-medium transition-colors"
+                  >
+                    <Edit3 className="w-3.5 h-3.5 text-rose-500 stroke-[1.5]" />
+                    <span>撤回并重新编辑提问</span>
+                  </button>
+
+                  {/* Recall only */}
+                  <button
+                    onClick={() => {
+                      handleRecallUserMessage(activeContextMenuMsg.id, false);
+                      setActiveContextMenuMsg(null);
+                    }}
+                    className="w-full px-3 py-2 text-left hover:bg-stone-50 rounded-xl flex items-center gap-2.5 text-xs text-stone-600 font-medium transition-colors"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5 text-stone-500 stroke-[1.5]" />
+                    <span>仅撤回此条消息</span>
+                  </button>
+                </>
+              )}
+
               {/* Pin to Memory Toggle */}
               <button
                 onClick={() => {
@@ -1583,7 +1981,7 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
                 className="w-full px-3 py-2 text-left hover:bg-stone-50 rounded-xl flex items-center gap-2.5 text-xs text-stone-800 font-medium transition-colors"
               >
                 <Bookmark className="w-3.5 h-3.5 text-slate-400 stroke-[1.5]" />
-                <span>{activeContextMenuMsg.isPinned || activeContextMenuMsg.isMemory ? '取消核心记忆' : '记住这条 / 设为核心记忆'}</span>
+                <span>{activeContextMenuMsg.isPinned || activeContextMenuMsg.isMemory ? '取消核心记忆' : '设为核心记忆'}</span>
               </button>
 
               {/* Copy Message Text */}
@@ -1602,20 +2000,185 @@ export const CompanionChat: React.FC<CompanionChatProps> = ({
                 <Copy className="w-3.5 h-3.5 text-slate-400 stroke-[1.5]" />
                 <span>复制内容</span>
               </button>
+            </div>
+          </div>
+        </div>
+      )}
 
-              {/* Bookmark Sentence (if Assistant message) */}
-              {activeContextMenuMsg.role === 'assistant' && (
-                <button
-                  onClick={() => {
-                    onSaveDialogue(activeContextMenuMsg);
-                    setActiveContextMenuMsg(null);
-                  }}
-                  className="w-full px-3 py-2 text-left hover:bg-stone-50 rounded-xl flex items-center gap-2.5 text-xs text-stone-700 transition-colors"
-                >
-                  <Sparkles className="w-3.5 h-3.5 text-amber-500/80 stroke-[1.5]" />
-                  <span>{savedDialogueIds.has(activeContextMenuMsg.id) ? '已收藏句子' : '收藏到句库'}</span>
-                </button>
+      {/* Unsatisfactory Response Recall & Revise Modal */}
+      {unsatisfactoryModalMsg && (
+        <div 
+          className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200"
+          onClick={() => setUnsatisfactoryModalMsg(null)}
+        >
+          <div 
+            className="bg-white rounded-2xl shadow-2xl border border-stone-200/90 p-4 sm:p-5 max-w-sm sm:max-w-md w-full space-y-4 animate-in zoom-in-95 duration-200 font-sans"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-stone-100 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-full bg-rose-50 text-rose-600 flex items-center justify-center shrink-0">
+                  <Undo2 className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-stone-900">不满意此回答？撤回与调整</h3>
+                  <p className="text-[11px] text-stone-500">选择您希望的处理方式</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setUnsatisfactoryModalMsg(null)}
+                className="p-1.5 rounded-full hover:bg-stone-100 text-stone-400 hover:text-stone-700 transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Answer Quote Preview */}
+            <div className="p-3 bg-stone-50 rounded-xl border border-stone-200/60 text-xs space-y-1">
+              <div className="text-[10px] text-stone-400 uppercase tracking-wider font-semibold">待撤回的回答</div>
+              <p className="text-stone-800 line-clamp-2 font-medium">
+                {(unsatisfactoryModalMsg.korean || unsatisfactoryModalMsg.content || '')
+                  .replace(/\([^)]*[\u4e00-\u9fa5]+[^)]*\)/g, '')
+                  .replace(/\[[^\]]*[\u4e00-\u9fa5]+[^\]]*\]/g, '')
+                  .replace(/（[^）]*[\u4e00-\u9fa5]+[^）]*）/g, '')
+                  .trim()}
+              </p>
+              {unsatisfactoryModalMsg.translation_zh && (
+                <p className="text-stone-500 text-[11px] line-clamp-1">
+                  {unsatisfactoryModalMsg.translation_zh}
+                </p>
               )}
+            </div>
+
+            {/* Quick Adjustment Tone Presets for Regeneration */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-medium text-stone-600 flex items-center gap-1">
+                  <Sparkles className="w-3 h-3 text-amber-500" />
+                  若重新作答，希望调整的风格：
+                </span>
+                {selectedToneHint && (
+                  <button 
+                    type="button" 
+                    onClick={() => setSelectedToneHint('')} 
+                    className="text-[10px] text-rose-500 hover:underline cursor-pointer"
+                  >
+                    清除
+                  </button>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {[
+                  '更口语自然',
+                  '更温柔体贴',
+                  '更简明扼要',
+                  '更傲娇反差',
+                  '多点生词解析',
+                  '加点日常生活感'
+                ].map((tone) => {
+                  const isSelected = selectedToneHint === tone;
+                  return (
+                    <button
+                      key={tone}
+                      type="button"
+                      onClick={() => setSelectedToneHint(isSelected ? '' : tone)}
+                      className={`px-2.5 py-1 rounded-full text-xs transition-all cursor-pointer ${
+                        isSelected 
+                          ? 'bg-stone-900 text-white font-medium shadow-xs' 
+                          : 'bg-stone-100 hover:bg-stone-200/80 text-stone-600'
+                      }`}
+                    >
+                      {tone}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* 3 Core Action Choices */}
+            <div className="space-y-2 pt-1">
+              {/* Option 1: Retract and re-edit prompt in input box */}
+              <button
+                type="button"
+                onClick={() => {
+                  handleRetractUnsatisfactoryResponse(unsatisfactoryModalMsg.id, 'edit_prompt');
+                  setUnsatisfactoryModalMsg(null);
+                }}
+                className="w-full p-2.5 rounded-xl border border-rose-200 bg-rose-50/50 hover:bg-rose-50 text-left flex items-start gap-2.5 transition-all group cursor-pointer"
+              >
+                <div className="p-1.5 rounded-lg bg-rose-100 text-rose-600 shrink-0 mt-0.5 group-hover:scale-105 transition-transform">
+                  <Edit3 className="w-4 h-4" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs font-semibold text-rose-950 flex items-center justify-between">
+                    <span>撤回并重新编辑我的提问</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-rose-200/70 text-rose-800 font-medium">推荐</span>
+                  </div>
+                  <p className="text-[11px] text-rose-700/80 mt-0.5">
+                    撤销此回答，并将上一句提问自动放回输入框，方便微调重发
+                  </p>
+                </div>
+              </button>
+
+              {/* Option 2: Retract and regenerate with tone hint */}
+              <button
+                type="button"
+                onClick={() => {
+                  handleRetractUnsatisfactoryResponse(
+                    unsatisfactoryModalMsg.id, 
+                    'regenerate', 
+                    selectedToneHint || customFeedbackText
+                  );
+                  setUnsatisfactoryModalMsg(null);
+                }}
+                className="w-full p-2.5 rounded-xl border border-stone-200 hover:border-stone-300 bg-white hover:bg-stone-50 text-left flex items-start gap-2.5 transition-all group cursor-pointer"
+              >
+                <div className="p-1.5 rounded-lg bg-stone-100 text-stone-700 shrink-0 mt-0.5 group-hover:scale-105 transition-transform">
+                  <RefreshCw className="w-4 h-4" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs font-semibold text-stone-900">
+                    撤回并重新作答
+                    {selectedToneHint && <span className="text-stone-500 font-normal ml-1">（{selectedToneHint}）</span>}
+                  </div>
+                  <p className="text-[11px] text-stone-500 mt-0.5">
+                    撤销原回答，由伙伴按照指定语气偏好重新给出新回答
+                  </p>
+                </div>
+              </button>
+
+              {/* Option 3: Delete this assistant response completely */}
+              <button
+                type="button"
+                onClick={() => {
+                  handleRetractUnsatisfactoryResponse(unsatisfactoryModalMsg.id, 'delete');
+                  setUnsatisfactoryModalMsg(null);
+                }}
+                className="w-full p-2.5 rounded-xl border border-stone-200/80 hover:border-stone-300 bg-white hover:bg-stone-50 text-left flex items-start gap-2.5 transition-all group cursor-pointer"
+              >
+                <div className="p-1.5 rounded-lg bg-stone-100 text-stone-500 shrink-0 mt-0.5 group-hover:scale-105 transition-transform">
+                  <Trash2 className="w-4 h-4 text-stone-500" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs font-semibold text-stone-700">仅撤回删除此条回答</div>
+                  <p className="text-[11px] text-stone-400 mt-0.5">
+                    从当前对话历史中彻底移除该条不满意回答
+                  </p>
+                </div>
+              </button>
+            </div>
+
+            {/* Cancel Button */}
+            <div className="pt-1">
+              <button
+                type="button"
+                onClick={() => setUnsatisfactoryModalMsg(null)}
+                className="w-full py-2 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-600 text-xs font-medium transition-colors cursor-pointer"
+              >
+                取消
+              </button>
             </div>
           </div>
         </div>

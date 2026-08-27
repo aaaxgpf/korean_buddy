@@ -1,25 +1,23 @@
 import { VocabItem } from '../types';
 import { WordItem } from '../types/lexicon';
 import { sanitizeVocabItem } from '../utils/koreanDictionary';
-import topikBeginnerData from './lexicon/topik_beginner.json';
-import topikIntermediateData from './lexicon/topik_intermediate.json';
-import topikAdvancedData from './lexicon/topik_advanced.json';
-import yonseiSeoulData from './lexicon/yonsei_seoul.json';
 import kpopFandomData from './lexicon/kpop_fandom.json';
+import dailyConversationData from './lexicon/daily_conversation.json';
 import mzSlangData from './lexicon/mz_slang.json';
 
 // Helper to convert WordItem to VocabItem
 export function convertWordItemToVocabItem(item: WordItem): VocabItem {
   const categoryMap: Record<string, { category: string; level: string }> = {
-    TOPIK_1_2: { category: 'TOPIK 1-2 初级', level: 'TOPIK 1-2' },
-    TOPIK_3_4: { category: 'TOPIK 3-4 中级', level: 'TOPIK 3-4' },
-    TOPIK_5_6: { category: 'TOPIK 5-6 高级', level: 'TOPIK 5-6' },
-    YONSEI_SEOUL: { category: '延世·首尔大', level: 'Yonsei/SNU' },
-    KPOP_FANDOM: { category: 'K-POP & 饭圈', level: 'K-pop' },
-    MZ_SLANG: { category: 'MZ 流行语', level: 'Daily' },
+    KPOP_FANDOM: { category: 'K-POP 饭圈', level: 'K-pop' },
+    DAILY_CONVERSATION: { category: '日常口语', level: 'Daily' },
+    MZ_SLANG: { category: '实时热词', level: 'Slang' },
+    TOPIK_1_2: { category: '日常口语', level: 'Daily' },
+    TOPIK_3_4: { category: '中级精选', level: 'Intermediate' },
+    TOPIK_5_6: { category: '高级精选', level: 'Advanced' },
+    YONSEI_SEOUL: { category: '日常口语', level: 'Daily' },
   };
 
-  const meta = categoryMap[item.category] || { category: 'Core Vocab', level: 'General' };
+  const meta = categoryMap[item.category] || { category: '日常口语', level: 'Daily' };
 
   return sanitizeVocabItem({
     id: item.id,
@@ -31,7 +29,7 @@ export function convertWordItemToVocabItem(item: WordItem): VocabItem {
     meaning_en: '',
     category: meta.category,
     level: meta.level,
-    source: item.category,
+    source: meta.category,
     origin: item.hanja_or_origin,
     full_form: item.hanja_or_origin,
     social_nuance: item.safety_level === 'CASUAL_FRIENDS' ? '仅限同辈亲友平语，对长辈/职场禁用' : '全场景通用表达',
@@ -42,22 +40,17 @@ export function convertWordItemToVocabItem(item: WordItem): VocabItem {
   });
 }
 
+// Built-in Lexicon Words: K-Pop Fandom + Daily Conversation + MZ Trending Slang
 export const ALL_LEXICON_WORDS: WordItem[] = [
   ...(kpopFandomData as WordItem[]),
+  ...(dailyConversationData as WordItem[]),
   ...(mzSlangData as WordItem[]),
-  ...(topikBeginnerData as WordItem[]),
-  ...(topikIntermediateData as WordItem[]),
-  ...(topikAdvancedData as WordItem[]),
-  ...(yonseiSeoulData as WordItem[]),
 ];
 
 export const INITIAL_VOCABULARY: VocabItem[] = ALL_LEXICON_WORDS.map(convertWordItemToVocabItem);
 
 export {
-  topikBeginnerData,
-  topikIntermediateData,
-  topikAdvancedData,
-  yonseiSeoulData,
   kpopFandomData,
+  dailyConversationData,
   mzSlangData,
 };

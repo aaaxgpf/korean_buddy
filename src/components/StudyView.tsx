@@ -26,6 +26,7 @@ interface Props {
   speakingProps: any;
   notebookProps: any;
   onImportCustomWords?: (newWords: any[], book: CustomLexiconBook) => void;
+  onDeleteCustomBook?: (deletedBook: CustomLexiconBook) => void;
 }
 
 export const StudyView: React.FC<Props> = ({
@@ -35,6 +36,7 @@ export const StudyView: React.FC<Props> = ({
   speakingProps,
   notebookProps,
   onImportCustomWords,
+  onDeleteCustomBook,
 }) => {
   const [currentView, setCurrentView] = useState<
     'menu' | 'daily_plan' | 'lexicon_uploader' | 'flashcards' | 'grammar' | 'dictation' | 'speaking' | 'notebook'
@@ -104,6 +106,7 @@ export const StudyView: React.FC<Props> = ({
                   newWords.forEach((w: any) => flashcardsProps.onAddCustomVocab(w));
                 }
               }}
+              onDeleteBook={onDeleteCustomBook}
               onSelectBookForStudy={handleSelectBookForStudy}
               totalVocabCount={totalVocabCount}
             />

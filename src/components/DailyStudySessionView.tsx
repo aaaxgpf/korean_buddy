@@ -188,7 +188,7 @@ export const DailyStudySessionView: React.FC<Props> = ({
         });
         const json = await res.json();
         setShortcutData({
-          title: '⭐ K-POP 饭圈生态与打榜专题',
+          title: 'K-POP 饭圈生态与打榜专题',
           items: json.terms || []
         });
       } else if (type === 'mistakes') {

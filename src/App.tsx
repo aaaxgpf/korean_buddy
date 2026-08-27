@@ -8,6 +8,7 @@ import { CompanionChat, formatKakaoMessageTime } from './components/CompanionCha
 import { CompanionAvatar } from './components/CompanionAvatar';
 import { UserProfileModal } from './components/UserProfileModal';
 import { StudyView } from './components/StudyView';
+import { MomentsView } from './components/MomentsView';
 import { SettingsView } from './components/SettingsView';
 import { AppSettings, VoiceSlotConfig, MiniMaxConfig } from './types';
 
@@ -28,14 +29,16 @@ import {
   DictationItem, 
   SpeakingTask, 
   CompanionSparkRecord,
-  CustomLexiconBook 
+  CustomLexiconBook,
+  UserActivityHistory
 } from './types';
 import { loadAllSparks, recordCompanionInteraction } from './utils/sparks';
+import { dispatchProactiveMessage, generateProactiveMessageDirect } from './utils/geminiDirect';
 import { MessageSquare, BookOpen, Layers, Headphones, Mic, Bookmark, Flame, UserPlus } from 'lucide-react';
 
 export default function App() {
   // Navigation Tab
-  const [activeTab, setActiveTab] = useState<'chat' | 'study' | 'settings'>('chat');
+  const [activeTab, setActiveTab] = useState<'chat' | 'moments' | 'study' | 'settings'>('chat');
 
   const [settings, setSettings] = useState<AppSettings>(() => {
     try {
@@ -322,30 +325,65 @@ export default function App() {
   // Language Mode: bilingual, zh, or en
   
 
-  // Vocab State & LocalStorage
+  // Vocab State & LocalStorage with strict active books reconciliation
   const [vocabulary, setVocabulary] = useState<VocabItem[]>(() => {
     try {
       const saved = localStorage.getItem('korean_vocabulary');
+      const savedBooksStr = localStorage.getItem('korean_buddy_custom_lexicon');
+      let customBooksList: CustomLexiconBook[] = [];
+      if (savedBooksStr) {
+        try {
+          customBooksList = JSON.parse(savedBooksStr);
+        } catch (e) {}
+      }
+
+      // Collect all words that are currently in active custom books
+      const activeCustomWordsMap = new Map<string, VocabItem>();
+      for (const book of customBooksList) {
+        if (book.words && Array.isArray(book.words)) {
+          for (const w of book.words) {
+            const key = w.id || w.hangul || w.word;
+            if (key) activeCustomWordsMap.set(key, sanitizeVocabItem(w));
+          }
+        }
+      }
+
       if (saved) {
         const parsed: VocabItem[] = JSON.parse(saved);
-        const savedMap = new Map(parsed.map(item => [item.id, item]));
+        const savedMap = new Map(parsed.map(item => [item.id || item.hangul || item.word, item]));
         const merged: VocabItem[] = [];
 
+        // 1. All Initial Preset words (always kept up-to-date with user mastery/bookmark flags)
         for (const preset of INITIAL_VOCABULARY) {
-          const userSaved = savedMap.get(preset.id);
+          const key = preset.id || preset.hangul || preset.word;
+          const userSaved = savedMap.get(key);
           if (userSaved) {
-            merged.push({ ...preset, ...userSaved });
-            savedMap.delete(preset.id);
+            merged.push(sanitizeVocabItem({ ...preset, ...userSaved }));
+            savedMap.delete(key);
           } else {
             merged.push(preset);
           }
         }
 
-        savedMap.forEach(customItem => {
-          merged.push(customItem);
+        // 2. Active custom books words
+        activeCustomWordsMap.forEach((bookItem, key) => {
+          const userSaved = savedMap.get(key);
+          if (userSaved) {
+            merged.push(sanitizeVocabItem({ ...bookItem, ...userSaved }));
+            savedMap.delete(key);
+          } else {
+            merged.push(bookItem);
+          }
         });
 
-        return merged.map(sanitizeVocabItem);
+        // 3. User bookmarks or manual additions (never lost)
+        savedMap.forEach(customItem => {
+          if (customItem.isBookmarked || customItem.source === 'manual_user_input') {
+            merged.push(sanitizeVocabItem(customItem));
+          }
+        });
+
+        return merged;
       }
     } catch (e) {
       console.error('Failed to load vocab', e);
@@ -525,44 +563,82 @@ export default function App() {
         let translation_zh = '';
         let translation_en = '';
 
-        // Dynamic LLM proactive generation based on live idol scenarios
+        // Dynamic 100% Real-Time LLM proactive generation
         try {
           const now = new Date();
-          const recentHistory = (companionChatMap[randomComp.id] || []).slice(-3);
-          const res = await fetch('/api/chat/proactive', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              character: randomComp,
-              userNickname: effectiveCallSign,
-              userCallSign: effectiveCallSign,
-              recentMessages: recentHistory,
-              clientTemporal: {
-                isoString: now.toISOString(),
-                hours: now.getHours(),
-                minutes: now.getMinutes(),
-              },
-              apiConfig: settings.api_config,
-            }),
-          });
-          if (res.ok) {
-            const data = await res.json();
-            if (data.korean_text || data.korean) {
-              korean = data.korean_text || data.korean;
-              translation_zh = data.translation_text || data.translation_zh || '';
-              translation_en = data.translation_en || '';
+          const fullChatHistory = companionChatMap[randomComp.id] || [];
+          const recentHistory = fullChatHistory.slice(-8);
+
+          // Compute userActivityHistory for dynamic intimacy and tone adaptation
+          const userMsgs = fullChatHistory.filter(m => m.role === 'user' || m.sender === 'user');
+          const lastUserMsg = userMsgs.length > 0 ? userMsgs[userMsgs.length - 1] : null;
+          const lastAnyMsg = fullChatHistory.length > 0 ? fullChatHistory[fullChatHistory.length - 1] : null;
+
+          const lastUserTimestamp = lastUserMsg?.timestamp ? Number(lastUserMsg.timestamp) : null;
+          const lastAnyTimestamp = lastAnyMsg?.timestamp ? Number(lastAnyMsg.timestamp) : null;
+
+          const hoursSinceLastUser = lastUserTimestamp ? (nowTs - lastUserTimestamp) / (1000 * 60 * 60) : null;
+          const hoursSinceLastAny = lastAnyTimestamp ? (nowTs - lastAnyTimestamp) / (1000 * 60 * 60) : null;
+
+          let activitySummaryZh = '用户尚未在此对话框中主动发过消息（新会话/首次主动打招呼）';
+          let frequency: 'high' | 'normal' | 'low' | 'new' = 'new';
+
+          if (hoursSinceLastUser !== null) {
+            if (hoursSinceLastUser < 2) {
+              activitySummaryZh = `用户在约 ${Math.max(1, Math.round(hoursSinceLastUser * 60))} 分钟前刚主动发过消息（刚聊过不久/高频互动）`;
+              frequency = 'high';
+            } else if (hoursSinceLastUser < 24) {
+              activitySummaryZh = `用户在约 ${Math.round(hoursSinceLastUser)} 小时前曾主动发过消息（当天常规日常间隔）`;
+              frequency = 'normal';
+            } else if (hoursSinceLastUser < 72) {
+              activitySummaryZh = `用户已有 ${Math.floor(hoursSinceLastUser / 24)} 天未主动发过消息（小别/几天未主动联系）`;
+              frequency = 'low';
+            } else {
+              activitySummaryZh = `用户已有 ${Math.floor(hoursSinceLastUser / 24)} 天未主动发过消息（较长时间未主动沟通）`;
+              frequency = 'low';
             }
           }
+
+          const userActivityHistory: UserActivityHistory = {
+            lastUserInteractionTimestamp: lastUserTimestamp,
+            lastInteractionTimestamp: lastAnyTimestamp,
+            lastUserMessageSnippet: (lastUserMsg?.content || lastUserMsg?.korean || '').slice(0, 60),
+            hoursSinceLastUserMessage: hoursSinceLastUser !== null ? Math.round(hoursSinceLastUser * 10) / 10 : null,
+            hoursSinceLastInteraction: hoursSinceLastAny !== null ? Math.round(hoursSinceLastAny * 10) / 10 : null,
+            userMessagesCount: userMsgs.length,
+            totalMessagesCount: fullChatHistory.length,
+            interactionFrequency: frequency,
+            summaryZh: activitySummaryZh,
+          };
+
+          const data = await dispatchProactiveMessage({
+            character: randomComp,
+            userNickname: effectiveCallSign,
+            userCallSign: effectiveCallSign,
+            userName: userProfile?.name || effectiveCallSign,
+            recentMessages: recentHistory,
+            apiConfig: settings.api_config,
+            clientTemporal: {
+              isoString: now.toISOString(),
+              hours: now.getHours(),
+              minutes: now.getMinutes(),
+            },
+            userActivityHistory,
+          });
+
+          if (data.korean_text || data.korean) {
+            korean = data.korean_text || data.korean;
+            translation_zh = data.translation_text || data.translation_zh || '';
+            translation_en = data.translation_en || '';
+          }
         } catch (err) {
-          console.debug('Proactive LLM fetch fallback:', err);
+          console.warn('[Proactive Dispatch Loop] Error during proactive LLM execution:', err);
         }
 
-        // Dynamic time-aware greeting fallback if LLM returned empty
+        // Strictly real-time generated: if LLM didn't return text, do not inject static canned messages
         if (!korean) {
-          const timeGreeting = getTimeAwareGreeting(randomComp, effectiveCallSign);
-          korean = timeGreeting.korean;
-          translation_zh = timeGreeting.translation_zh;
-          translation_en = timeGreeting.translation_en;
+          scheduleNextProactiveCheck();
+          return;
         }
 
         const proactiveMsg: ChatMessage = {
@@ -743,7 +819,33 @@ export default function App() {
     setVocabulary((prev) => {
       const existingHangul = new Set(prev.map(v => v.hangul || v.word));
       const filteredNew = newWords.filter(w => !existingHangul.has(w.hangul || w.word));
-      return [...filteredNew, ...prev];
+      const next = [...filteredNew, ...prev];
+      try {
+        localStorage.setItem('korean_vocabulary', JSON.stringify(next));
+      } catch (e) {}
+      return next;
+    });
+  };
+
+  const handleDeleteCustomBook = (deletedBook: CustomLexiconBook) => {
+    if (!deletedBook || !deletedBook.words) return;
+    const wordsToDeleteSet = new Set(
+      deletedBook.words.map(w => w.id || w.hangul || w.word)
+    );
+
+    setVocabulary((prev) => {
+      const next = prev.filter(v => {
+        const key = v.id || v.hangul || v.word;
+        // Keep the word only if it wasn't in the deleted book OR the user explicitly saved/bookmarked it in their notebook
+        if (wordsToDeleteSet.has(key) && !v.isBookmarked && v.source !== 'manual_user_input') {
+          return false;
+        }
+        return true;
+      });
+      try {
+        localStorage.setItem('korean_vocabulary', JSON.stringify(next));
+      } catch (e) {}
+      return next;
     });
   };
 
@@ -949,6 +1051,14 @@ export default function App() {
                  onSelectCompanion={(comp) => { handleSelectCompanion(comp); setChatView('chat'); }}
                  companionMessages={companionChatMap[currentCompanion.id]}
                  onUpdateMessages={(updater) => handleUpdateCompanionMessages(currentCompanion.id, updater)}
+                 onMarkAsRead={(compId) => {
+                   setUnreadMap((prev) => {
+                     if (!prev[compId]) return prev;
+                     const next = { ...prev };
+                     delete next[compId];
+                     return next;
+                   });
+                 }}
                  onClearChat={(preservePinned) => handleClearCompanionChat(currentCompanion.id, preservePinned)}
                  
                  onOpenSparksModal={() => setIsSparksModalOpen(true)}
@@ -966,9 +1076,22 @@ export default function App() {
           </div>
         )}
         
+        {activeTab === 'moments' && (
+          <MomentsView
+            companions={companions}
+            selectedCompanion={currentCompanion}
+            userProfile={userProfile}
+            languageMode={settings.languageMode}
+            recentMessages={companionChatMap[currentCompanion.id] || []}
+            onSaveVocab={handleSaveVocab}
+            savedVocabIds={savedVocabIds}
+          />
+        )}
+        
         {activeTab === 'study' && (
           <StudyView
             onImportCustomWords={handleImportCustomWords}
+            onDeleteCustomBook={handleDeleteCustomBook}
             flashcardsProps={{
               vocabulary,
               onToggleBookmarkVocab: handleToggleBookmarkVocab,

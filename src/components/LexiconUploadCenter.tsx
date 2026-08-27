@@ -20,7 +20,9 @@ import {
   Edit3,
   X,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  ShieldCheck,
+  FolderOpen
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { VocabItem, CustomLexiconBook, AISeedExpansionResult } from '../types';
@@ -32,22 +34,32 @@ import { notifyToast, formatApiErrorMessage } from '../utils/toast';
 
 interface Props {
   onImportWords: (newWords: VocabItem[], book: CustomLexiconBook) => void;
+  onDeleteBook?: (deletedBook: CustomLexiconBook) => void;
   onSelectBookForStudy?: (book: CustomLexiconBook) => void;
   totalVocabCount: number;
 }
 
 export const LexiconUploadCenter: React.FC<Props> = ({
   onImportWords,
+  onDeleteBook,
   onSelectBookForStudy,
   totalVocabCount
 }) => {
-  // Saved Custom Books from LocalStorage
+  // Official Preset Books (always available and up-to-date)
+  const presetBooks = PRESET_CUSTOM_BOOKS.map(b => ({
+    ...b,
+    words: b.words ? b.words.map(sanitizeVocabItem) : []
+  }));
+
+  // Saved Custom User Books from LocalStorage
   const [customBooks, setCustomBooks] = useState<CustomLexiconBook[]>(() => {
     try {
       const saved = localStorage.getItem('korean_buddy_custom_lexicon');
       if (saved) {
         const parsed: CustomLexiconBook[] = JSON.parse(saved);
-        return parsed.map(b => ({
+        // Exclude preset IDs so user books and preset books don't overlap
+        const userUploaded = parsed.filter(b => !b.id.startsWith('preset_') && b.fileType !== 'preset');
+        return userUploaded.map(b => ({
           ...b,
           words: b.words ? b.words.map(sanitizeVocabItem) : []
         }));
@@ -55,14 +67,13 @@ export const LexiconUploadCenter: React.FC<Props> = ({
     } catch (e) {
       console.error('Failed to load custom lexicon books', e);
     }
-    return PRESET_CUSTOM_BOOKS.map(b => ({
-      ...b,
-      words: b.words ? b.words.map(sanitizeVocabItem) : []
-    }));
+    return [];
   });
 
+  const allBooks = [...presetBooks, ...customBooks];
+
   const [selectedBookId, setSelectedBookId] = useState<string>(() => {
-    return customBooks[0]?.id || 'preset_yonsei_vol1';
+    return presetBooks[0]?.id || 'preset_kpop_fandom';
   });
 
   // Upload state
@@ -80,18 +91,94 @@ export const LexiconUploadCenter: React.FC<Props> = ({
   // Rename modal state
   const [editingBook, setEditingBook] = useState<{ id: string; title: string; category: string } | null>(null);
 
+  // Real-time trending slang sync state
+  const [isSyncingTrending, setIsSyncingTrending] = useState(false);
+
+  const handleSyncTrendingSlang = async (e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setIsSyncingTrending(true);
+    setErrorMessage(null);
+    try {
+      const res = await fetch('/api/curriculum/trending-slang');
+      if (!res.ok) {
+        throw new Error('网络请求热词失败');
+      }
+      const data = await res.json();
+      const rawWords = data.words || [];
+      if (!rawWords.length) {
+        throw new Error('未获取到有效流行词汇');
+      }
+
+      const newVocabItems: VocabItem[] = rawWords.map((item: any, idx: number) => sanitizeVocabItem({
+        id: `trend_live_${Date.now()}_${idx}`,
+        word: item.word,
+        hangul: item.word,
+        hanja_or_root: item.origin || item.hanja_or_origin || '2025-2026 韩国实时网络热梗',
+        type: item.pos || '신조어',
+        meaning_zh: item.meaning_zh || item.definition_zh,
+        meaning_en: '',
+        category: '实时热词',
+        level: 'Slang',
+        source: '实时热词',
+        origin: item.origin || item.hanja_or_origin || '',
+        full_form: item.origin || item.hanja_or_origin || '',
+        social_nuance: '韩国网络与同辈亲友高频流行语',
+        example_kr: item.example_kr,
+        example_zh: item.example_zh,
+        mastered: 'new',
+        isBookmarked: false,
+      }));
+
+      const trendingBook = presetBooks.find(b => b.id === 'preset_trending_slang') || {
+        id: 'preset_trending_slang',
+        title: '实时热词',
+        description: '联网实时同步韩国 2024-2026 SNS 与 TikTok 流行热梗新词',
+        fileName: 'trending_slang_live.json',
+        fileType: 'preset' as const,
+        totalWords: newVocabItems.length,
+        importedAt: Date.now(),
+        category: '实时热词',
+        words: newVocabItems
+      };
+
+      onImportWords(newVocabItems, {
+        ...trendingBook,
+        words: [...trendingBook.words, ...newVocabItems],
+        totalWords: trendingBook.words.length + newVocabItems.length
+      });
+
+      setSelectedBookId('preset_trending_slang');
+      setSuccessBanner(`成功联网同步 ${newVocabItems.length} 个韩国当下最新热门流行语！`);
+      confetti({ particleCount: 30, spread: 60, origin: { y: 0.6 } });
+      notifyToast({
+        type: 'success',
+        title: '热词同步成功',
+        message: `已成功联网更新 ${newVocabItems.length} 条韩国当下热梗`
+      });
+    } catch (err: any) {
+      console.error('Failed to sync trending slang', err);
+      setErrorMessage(formatApiErrorMessage(err) || '联网获取实时热词失败，请稍后重试');
+    } finally {
+      setIsSyncingTrending(false);
+    }
+  };
+
   // Preview, Search & Pagination
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState<number | 'all'>(50);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Persist customBooks to localStorage
+  // Persist user customBooks to localStorage
   useEffect(() => {
-    localStorage.setItem('korean_buddy_custom_lexicon', JSON.stringify(customBooks));
+    try {
+      localStorage.setItem('korean_buddy_custom_lexicon', JSON.stringify(customBooks));
+    } catch (e) {
+      console.warn('Failed to persist customBooks', e);
+    }
   }, [customBooks]);
 
-  const activeBook = customBooks.find(b => b.id === selectedBookId) || customBooks[0];
+  const activeBook = allBooks.find(b => b.id === selectedBookId) || allBooks[0];
 
   // Reset page when active book or search query changes
   useEffect(() => {
@@ -235,12 +322,14 @@ export const LexiconUploadCenter: React.FC<Props> = ({
           words: [...data.expandedItems, ...activeBook.words],
         };
 
-        setCustomBooks(prev => prev.map(b => b.id === activeBook.id ? updatedBook : b));
+        if (customBooks.some(b => b.id === activeBook.id)) {
+          setCustomBooks(prev => prev.map(b => b.id === activeBook.id ? updatedBook : b));
+        }
         onImportWords(data.expandedItems, updatedBook);
         setSuccessBanner(`已基于种子词扩充 ${data.expandedItems.length} 个实战词条与练习例句。`);
         notifyToast({
           type: 'success',
-          title: '✨ 词书拓展完成',
+          title: '词书拓展完成',
           message: `已成功基于《${activeBook.title}》扩充 ${data.expandedItems.length} 个核心生词与实战例句。`
         });
         setTimeout(() => setSuccessBanner(null), 5000);
@@ -272,18 +361,33 @@ export const LexiconUploadCenter: React.FC<Props> = ({
     if (!bookToDelete) return;
     const bookId = bookToDelete.id;
     const bookTitle = bookToDelete.title || '该词书';
+    
+    // 1. Notify parent to completely remove words from global vocabulary state
+    if (onDeleteBook) {
+      onDeleteBook(bookToDelete);
+    }
+
+    // 2. Remove from customBooks state
     const filtered = customBooks.filter(b => b.id !== bookId);
     setCustomBooks(filtered);
+    
     try {
       localStorage.setItem('korean_buddy_custom_lexicon', JSON.stringify(filtered));
     } catch (e) {
       console.warn('Failed to save lexicon to localStorage:', e);
     }
+
     if (selectedBookId === bookId) {
-      setSelectedBookId(filtered[0]?.id || '');
+      setSelectedBookId(presetBooks[0]?.id || filtered[0]?.id || '');
     }
+
     setBookToDelete(null);
-    setSuccessBanner(`已彻底删除词书《${bookTitle}》`);
+    setSuccessBanner(`已彻底删除词书《${bookTitle}》及其全部关联词条。`);
+    notifyToast({
+      type: 'info',
+      title: '词书已删除',
+      message: `已成功移除《${bookTitle}》及相关词汇。`
+    });
     setTimeout(() => setSuccessBanner(null), 3000);
   };
 
@@ -319,64 +423,36 @@ export const LexiconUploadCenter: React.FC<Props> = ({
   const handleBatchSanitizeActiveBook = () => {
     if (!activeBook) return;
     const cleanedWords = activeBook.words.map(sanitizeVocabItem);
-    const updatedBook: CustomLexiconBook = {
-      ...activeBook,
-      words: cleanedWords,
-      updatedAt: Date.now()
-    };
-    const updatedBooks = customBooks.map(b => b.id === activeBook.id ? updatedBook : b);
-    setCustomBooks(updatedBooks);
-    try {
-      localStorage.setItem('korean_buddy_custom_lexicon', JSON.stringify(updatedBooks));
-    } catch (e) {
-      console.warn('Failed to save to localStorage:', e);
+    const updatedBook = { ...activeBook, words: cleanedWords };
+    
+    if (customBooks.some(b => b.id === activeBook.id)) {
+      setCustomBooks(prev => prev.map(b => b.id === activeBook.id ? updatedBook : b));
     }
-    setSuccessBanner('词书释义已全量规范清洗！多余数字已清除，中英文释义已精准分离。');
-    notifyToast({
-      type: 'success',
-      title: '✨ 词条清洗完成',
-      message: `已为《${activeBook.title}》清洗 ${cleanedWords.length} 个词条，分离中英文并清除杂质数字。`
-    });
-    setTimeout(() => setSuccessBanner(null), 4000);
+    setSuccessBanner(`已清洗规范《${activeBook.title}》所有词条释义与词性。`);
+    setTimeout(() => setSuccessBanner(null), 3000);
   };
 
-  // Word edit state & handlers
-  const [editingWord, setEditingWord] = useState<VocabItem | null>(null);
-
-  const handleSaveWordEdit = () => {
-    if (!editingWord || !activeBook) return;
-    const cleaned = sanitizeVocabItem(editingWord);
-    const updatedWords = activeBook.words.map(w => w.id === cleaned.id ? cleaned : w);
-    const updatedBook: CustomLexiconBook = {
-      ...activeBook,
-      words: updatedWords,
-      updatedAt: Date.now()
-    };
-    const updatedBooks = customBooks.map(b => b.id === activeBook.id ? updatedBook : b);
-    setCustomBooks(updatedBooks);
-    try {
-      localStorage.setItem('korean_buddy_custom_lexicon', JSON.stringify(updatedBooks));
-    } catch (e) {
-      console.warn('Failed to save to localStorage:', e);
-    }
-    setEditingWord(null);
-    notifyToast({
-      type: 'success',
-      title: '词条已更新',
-      message: `已成功修改词汇 “${cleaned.hangul}” 的释义与例句。`
-    });
+  // Export active book as JSON
+  const handleExportActiveBookJSON = () => {
+    if (!activeBook) return;
+    const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(activeBook.words, null, 2));
+    const downloadAnchor = document.createElement('a');
+    downloadAnchor.setAttribute('href', dataStr);
+    downloadAnchor.setAttribute('download', `${activeBook.title.replace(/[《》]/g, '')}_words.json`);
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    downloadAnchor.remove();
   };
 
-  // Filter words in preview
-  const filteredWords = (activeBook?.words || []).filter(w => {
-    if (!searchQuery) return true;
+  // Filtered & Paginated Words for Active Book
+  const filteredWords = (activeBook?.words || []).filter(item => {
+    if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase().trim();
     return (
-      (w.hangul && w.hangul.toLowerCase().includes(q)) ||
-      (w.word && w.word.toLowerCase().includes(q)) ||
-      (w.meaning_zh && w.meaning_zh.toLowerCase().includes(q)) ||
-      (w.meaning_en && w.meaning_en.toLowerCase().includes(q)) ||
-      (w.hanja_or_root && w.hanja_or_root.toLowerCase().includes(q))
+      (item.hangul || item.word || '').toLowerCase().includes(q) ||
+      (item.meaning_zh || '').toLowerCase().includes(q) ||
+      (item.origin || item.hanja_or_root || '').toLowerCase().includes(q) ||
+      (item.type || '').toLowerCase().includes(q)
     );
   });
 
@@ -387,6 +463,10 @@ export const LexiconUploadCenter: React.FC<Props> = ({
 
   const totalPages = pageSize === 'all' ? 1 : Math.max(1, Math.ceil(totalFiltered / pageSize));
 
+  // Compute precise stats
+  const presetTotalWords = presetBooks.reduce((sum, b) => sum + (b.totalWords || b.words.length), 0);
+  const customTotalWords = customBooks.reduce((sum, b) => sum + (b.totalWords || b.words.length), 0);
+
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       
@@ -395,18 +475,24 @@ export const LexiconUploadCenter: React.FC<Props> = ({
         <div>
           <h2 className="text-lg font-semibold text-slate-900 tracking-tight flex items-center gap-2">
             <Layers size={18} className="text-slate-700" />
-            <span>自定义词书与管理中心</span>
+            <span>词书库与自定义导入管理</span>
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            支持 PDF / JSON / CSV / TXT 格式导入，数据本地持久化存储
+            官方内置 K-POP & 高频日常词库，支持扩展导入 .PDF / .JSON / .CSV / .TXT
           </p>
         </div>
-        <div className="flex items-center gap-2 text-xs">
-          <div className="px-3 py-1.5 rounded-lg bg-slate-50 border border-black/[0.04] text-slate-700 font-mono">
-            已导入 <span className="text-slate-900 font-semibold">{customBooks.length}</span> 本词书
+        <div className="flex items-center gap-2 text-xs flex-wrap">
+          <div className="px-3 py-1.5 rounded-lg bg-slate-100 border border-black/[0.04] text-slate-700 font-mono flex items-center gap-1.5">
+            <ShieldCheck size={13} className="text-slate-900" />
+            <span>内置 <strong className="text-slate-900">{presetBooks.length}</strong> 本 ({presetTotalWords} 词)</span>
           </div>
-          <div className="px-3 py-1.5 rounded-lg bg-slate-50 border border-black/[0.04] text-slate-700 font-mono">
-            总词库 <span className="text-slate-900 font-semibold">{totalVocabCount}</span> 词
+          {customBooks.length > 0 && (
+            <div className="px-3 py-1.5 rounded-lg bg-slate-50 border border-black/[0.04] text-slate-700 font-mono">
+              导入 <strong className="text-slate-900">{customBooks.length}</strong> 本 ({customTotalWords} 词)
+            </div>
+          )}
+          <div className="px-3 py-1.5 rounded-lg bg-slate-900 text-white font-mono shadow-xs">
+            总词库 <strong className="text-white">{totalVocabCount}</strong> 词
           </div>
         </div>
       </div>
@@ -486,85 +572,189 @@ export const LexiconUploadCenter: React.FC<Props> = ({
               </p>
             </div>
             <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-lg bg-slate-50 border border-black/[0.04] text-[11px] text-slate-500 font-mono">
-              <span>自动识别词性、释义与例句</span>
+              <span>自动识别词性、释义、例句与生词难度</span>
             </div>
           </div>
         )}
       </div>
 
-      {/* Part 2: Lexicon Books List */}
+      {/* Part 2: Official Preset Lexicons (官方内置板块) */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-            词书列表 ({customBooks.length})
+          <h3 className="text-xs font-semibold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
+            <ShieldCheck size={14} className="text-slate-700" />
+            <span>官方内置词书板块 ({presetBooks.length})</span>
           </h3>
-          <span className="text-[11px] text-slate-400">
-            存储于本地浏览器缓存
+          <span className="text-[11px] text-slate-400 font-mono">
+            系统深度整理 · 全面收录
           </span>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {customBooks.map(book => {
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          {presetBooks.map(book => {
             const isSelected = book.id === selectedBookId;
+            const isTrending = book.id.includes('trending') || book.id.includes('slang');
+            const iconTag = book.id.includes('kpop') ? 'K-POP' : book.id.includes('daily') ? 'DAILY' : 'TREND';
+
             return (
               <div
                 key={book.id}
                 onClick={() => setSelectedBookId(book.id)}
-                className={`p-4 rounded-xl border text-left transition-all cursor-pointer relative shadow-sm ${
+                className={`p-4 rounded-xl border text-left transition-all cursor-pointer relative shadow-sm flex flex-col justify-between ${
                   isSelected
-                    ? 'bg-slate-50/90 border-slate-900/30 ring-1 ring-slate-900/10'
+                    ? 'bg-slate-50/90 border-slate-900/40 ring-1 ring-slate-900/10'
                     : 'bg-white border-black/[0.04] hover:border-slate-300'
                 }`}
               >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <div className="w-7 h-7 rounded-lg bg-slate-100 border border-black/[0.04] flex items-center justify-center shrink-0 text-slate-700 font-mono text-[11px] font-semibold">
-                      {book.fileType.slice(0, 3).toUpperCase()}
+                <div>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="w-8 h-8 rounded-lg bg-slate-900 text-white flex items-center justify-center shrink-0 font-mono text-[10px] font-bold">
+                        {iconTag}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <h4 className="font-semibold text-xs text-slate-900 truncate">
+                            {book.title}
+                          </h4>
+                        </div>
+                        <p className="text-[11px] text-slate-500 mt-0.5 font-mono">
+                          {book.totalWords} 词 {isTrending ? '· 实时连网' : '· 精选内置'}
+                        </p>
+                      </div>
                     </div>
-                    <div className="min-w-0">
-                      <h4 className="font-semibold text-xs text-slate-900 truncate">
-                        {book.title}
-                      </h4>
-                      <p className="text-[11px] text-slate-500 mt-0.5">
-                        {book.totalWords} 词 {book.expandedCount ? `(+${book.expandedCount} 扩充)` : ''}
-                      </p>
+
+                    <div className="flex items-center gap-1 shrink-0">
+                      {isSelected ? (
+                        <span className="px-2 py-0.5 rounded bg-slate-900 text-white text-[10px] font-medium">
+                          当前
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 text-[10px] font-medium border border-slate-200/60">
+                          {isTrending ? '实时' : '内置'}
+                        </span>
+                      )}
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-1 shrink-0">
-                    {isSelected && (
-                      <span className="px-2 py-0.5 rounded bg-slate-900 text-white text-[10px] font-medium">
-                        当前
-                      </span>
-                    )}
-                    <button
-                      type="button"
-                      onClick={(e) => handleOpenRename(book, e)}
-                      className="p-1 text-slate-400 hover:text-slate-700 rounded hover:bg-slate-100 transition-colors"
-                      title="重命名词书"
-                    >
-                      <Edit3 size={13} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={(e) => handleOpenDelete(book, e)}
-                      className="p-1.5 text-slate-400 hover:text-red-600 rounded-lg hover:bg-red-50 transition-colors"
-                      title="彻底删除词书"
-                    >
-                      <Trash2 size={13} />
-                    </button>
-                  </div>
+                  {book.description && (
+                    <p className="text-[11px] text-slate-500 mt-2.5 line-clamp-2 leading-relaxed">
+                      {book.description}
+                    </p>
+                  )}
                 </div>
 
-                {book.description && (
-                  <p className="text-[11px] text-slate-500 mt-2 line-clamp-1 leading-relaxed">
-                    {book.description}
-                  </p>
+                {isTrending && (
+                  <div className="mt-3 pt-2.5 border-t border-black/[0.05] flex items-center justify-between">
+                    <button
+                      type="button"
+                      disabled={isSyncingTrending}
+                      onClick={handleSyncTrendingSlang}
+                      className="w-full py-1.5 px-2.5 rounded-lg bg-slate-100 hover:bg-slate-200/90 text-slate-800 text-[11px] font-medium transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50"
+                    >
+                      {isSyncingTrending ? (
+                        <>
+                          <Loader2 size={12} className="animate-spin text-slate-700" />
+                          <span>联网更新中...</span>
+                        </>
+                      ) : (
+                        <>
+                          <RefreshCw size={12} className="text-slate-700" />
+                          <span>联网更新热词</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
                 )}
               </div>
             );
           })}
         </div>
+      </div>
+
+      {/* Part 3: User Custom Uploaded Books */}
+      <div className="space-y-3 pt-2">
+        <div className="flex items-center justify-between">
+          <h3 className="text-xs font-semibold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
+            <FolderOpen size={14} className="text-slate-500" />
+            <span>我的自定义导入词书 ({customBooks.length})</span>
+          </h3>
+          <span className="text-[11px] text-slate-400">
+            支持重命名、词库清洗与彻底删除
+          </span>
+        </div>
+
+        {customBooks.length === 0 ? (
+          <div className="p-6 rounded-xl bg-slate-50/60 border border-dashed border-slate-200 text-center space-y-1">
+            <p className="text-xs text-slate-600 font-medium">暂无自定义上传词书</p>
+            <p className="text-[11px] text-slate-400">
+              上方拖拽或点击上传本地词汇文件，即可扩展专属词书与生词题库
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {customBooks.map(book => {
+              const isSelected = book.id === selectedBookId;
+              return (
+                <div
+                  key={book.id}
+                  onClick={() => setSelectedBookId(book.id)}
+                  className={`p-4 rounded-xl border text-left transition-all cursor-pointer relative shadow-sm ${
+                    isSelected
+                      ? 'bg-slate-50/90 border-slate-900/30 ring-1 ring-slate-900/10'
+                      : 'bg-white border-black/[0.04] hover:border-slate-300'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="w-8 h-8 rounded-lg bg-slate-100 border border-black/[0.04] flex items-center justify-center shrink-0 text-slate-700 font-mono text-[11px] font-semibold">
+                        {book.fileType?.slice(0, 3).toUpperCase() || 'DOC'}
+                      </div>
+                      <div className="min-w-0">
+                        <h4 className="font-semibold text-xs text-slate-900 truncate">
+                          {book.title}
+                        </h4>
+                        <p className="text-[11px] text-slate-500 mt-0.5">
+                          {book.totalWords} 词 {book.expandedCount ? `(+${book.expandedCount} 扩充)` : ''}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1 shrink-0">
+                      {isSelected && (
+                        <span className="px-2 py-0.5 rounded bg-slate-900 text-white text-[10px] font-medium">
+                          当前
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={(e) => handleOpenRename(book, e)}
+                        className="p-1 text-slate-400 hover:text-slate-700 rounded hover:bg-slate-100 transition-colors"
+                        title="重命名词书"
+                      >
+                        <Edit3 size={13} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => handleOpenDelete(book, e)}
+                        className="p-1.5 text-slate-400 hover:text-red-600 rounded-lg hover:bg-red-50 transition-colors"
+                        title="彻底删除词书与对应词汇"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  </div>
+
+                  {book.description && (
+                    <p className="text-[11px] text-slate-500 mt-2 line-clamp-1 leading-relaxed">
+                      {book.description}
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Delete Book Confirmation Modal */}
@@ -577,7 +767,7 @@ export const LexiconUploadCenter: React.FC<Props> = ({
               </div>
               <div className="min-w-0">
                 <h4 className="text-sm font-semibold text-slate-900 truncate">彻底删除词书</h4>
-                <p className="text-xs text-slate-500 mt-0.5">此操作不可撤销</p>
+                <p className="text-xs text-slate-500 mt-0.5">将同步清理全局词库中的对应生词</p>
               </div>
             </div>
 
@@ -598,7 +788,7 @@ export const LexiconUploadCenter: React.FC<Props> = ({
                 onClick={handleConfirmDelete}
                 className="px-4 py-2 text-xs font-semibold text-white bg-red-600 hover:bg-red-700 rounded-xl shadow-xs transition-colors"
               >
-                确认删除
+                确认彻底删除
               </button>
             </div>
           </div>
@@ -664,7 +854,7 @@ export const LexiconUploadCenter: React.FC<Props> = ({
         </div>
       )}
 
-      {/* Part 3: Active Book Details & Words Table */}
+      {/* Part 4: Active Book Details & Words Table */}
       {activeBook && (
         <div className="p-5 rounded-2xl bg-white border border-black/[0.04] shadow-sm space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -674,6 +864,11 @@ export const LexiconUploadCenter: React.FC<Props> = ({
                 <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 text-[10px] font-mono">
                   {activeBook.category || '自定义'}
                 </span>
+                {activeBook.id.startsWith('preset_') && (
+                  <span className="px-2 py-0.5 rounded bg-slate-900 text-white text-[10px] font-medium">
+                    官方内置
+                  </span>
+                )}
               </div>
               <p className="text-xs text-slate-500 mt-0.5">
                 包含 {activeBook.words.length} 个词汇条目
@@ -718,6 +913,14 @@ export const LexiconUploadCenter: React.FC<Props> = ({
                   </>
                 )}
               </button>
+
+              <button
+                onClick={handleExportActiveBookJSON}
+                className="p-1.5 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 hover:text-slate-900 transition-colors shadow-sm"
+                title="导出词书 JSON"
+              >
+                <Download size={14} />
+              </button>
             </div>
           </div>
 
@@ -748,124 +951,128 @@ export const LexiconUploadCenter: React.FC<Props> = ({
                   词条列表 ({totalFiltered} 词)
                 </span>
                 <span className="text-[11px] text-slate-400">
-                  第 {currentPage} / {totalPages} 页
+                  可快速检索韩语单词、词性与释义
                 </span>
               </div>
 
+              {/* Search bar & Page size selector */}
               <div className="flex items-center gap-2">
-                <div className="relative w-44 sm:w-56">
-                  <Search size={13} className="absolute left-2.5 top-2.5 text-slate-400" />
+                <div className="relative">
+                  <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
                   <input
                     type="text"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="搜索词汇、中文或英文释义..."
-                    className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-black/[0.04] rounded-lg text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:bg-white focus:border-slate-400 transition-all"
+                    placeholder="搜索词条、释义..."
+                    className="pl-7 pr-3 py-1 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-slate-800 w-44"
                   />
+                  {searchQuery && (
+                    <button
+                      onClick={() => setSearchQuery('')}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    >
+                      <X size={11} />
+                    </button>
+                  )}
                 </div>
 
                 <select
                   value={pageSize}
                   onChange={(e) => setPageSize(e.target.value === 'all' ? 'all' : Number(e.target.value))}
-                  className="px-2 py-1.5 bg-slate-50 border border-black/[0.04] rounded-lg text-xs text-slate-700 focus:outline-none focus:bg-white"
+                  className="px-2 py-1 text-xs border border-slate-200 rounded-lg bg-white text-slate-700 focus:outline-none focus:border-slate-800"
                 >
-                  <option value={50}>每页 50 词</option>
-                  <option value={100}>每页 100 词</option>
-                  <option value="all">显示全部</option>
+                  <option value={20}>20 词/页</option>
+                  <option value={50}>50 词/页</option>
+                  <option value={100}>100 词/页</option>
+                  <option value="all">全部显示</option>
                 </select>
               </div>
             </div>
 
-            <div className="max-h-96 overflow-y-auto rounded-xl border border-slate-200 bg-white relative">
+            {/* Word Items Table */}
+            <div className="overflow-x-auto rounded-xl border border-black/[0.04]">
               <table className="w-full text-left text-xs border-collapse">
-                <thead className="bg-slate-100 text-slate-700 sticky top-0 z-10 border-b border-slate-200 shadow-xs">
-                  <tr>
-                    <th className="py-2.5 px-3 font-semibold text-[11px] whitespace-nowrap">韩语 (Hangul)</th>
-                    <th className="py-2.5 px-3 font-semibold text-[11px] whitespace-nowrap">词性 / 汉字</th>
-                    <th className="py-2.5 px-3 font-semibold text-[11px]">中文释义</th>
-                    <th className="py-2.5 px-3 font-semibold text-[11px]">英文释义</th>
-                    <th className="py-2.5 px-3 font-semibold text-[11px]">实战例句</th>
-                    <th className="py-2.5 px-3 text-right font-semibold text-[11px] whitespace-nowrap">操作</th>
+                <thead>
+                  <tr className="bg-slate-50 border-b border-black/[0.04] text-slate-500 font-medium">
+                    <th className="py-2.5 px-3 w-12 text-center font-mono">#</th>
+                    <th className="py-2.5 px-3">韩文单词</th>
+                    <th className="py-2.5 px-3 w-20">词性</th>
+                    <th className="py-2.5 px-3">汉字词/溯源</th>
+                    <th className="py-2.5 px-3">中文释义</th>
+                    <th className="py-2.5 px-3">实战例句</th>
+                    <th className="py-2.5 px-3 w-12 text-center">发音</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 bg-white">
-                  {displayedWords.map(item => (
-                    <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="py-2.5 px-3 whitespace-nowrap">
-                        <span className="font-semibold text-slate-900">{item.hangul || item.word}</span>
-                      </td>
-                      <td className="py-2.5 px-3 text-slate-500 text-[11px] whitespace-nowrap">
-                        <span>{item.type}</span>
-                        {item.hanja_or_root && (
-                          <span className="ml-1 text-slate-400 font-serif">({item.hanja_or_root})</span>
-                        )}
-                      </td>
-                      <td className="py-2.5 px-3 text-slate-800 font-medium">{item.meaning_zh}</td>
-                      <td className="py-2.5 px-3 text-slate-500 text-[11px] font-sans">
-                        {item.meaning_en ? (
-                          <span className="text-slate-600">{item.meaning_en}</span>
-                        ) : (
-                          <span className="text-slate-300">-</span>
-                        )}
-                      </td>
-                      <td className="py-2.5 px-3 text-slate-500 text-[11px] max-w-xs truncate" title={`${item.example_kr || ''} ${item.example_zh || ''}`}>
-                        {item.example_kr || '-'}
-                      </td>
-                      <td className="py-2.5 px-3 text-right whitespace-nowrap">
-                        <div className="flex items-center justify-end gap-1">
-                          <button
-                            type="button"
-                            onClick={() => speakKorean(item.hangul || item.word)}
-                            className="p-1 rounded text-slate-400 hover:text-slate-900 hover:bg-slate-100 transition-colors"
-                            title="朗读发音"
-                          >
-                            <Volume2 size={13} />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setEditingWord(item)}
-                            className="p-1 rounded text-slate-400 hover:text-slate-900 hover:bg-slate-100 transition-colors"
-                            title="编辑词条"
-                          >
-                            <Edit3 size={13} />
-                          </button>
-                        </div>
+                <tbody className="divide-y divide-black/[0.03]">
+                  {displayedWords.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="py-8 text-center text-slate-400 text-xs">
+                        未找到匹配词条
                       </td>
                     </tr>
-                  ))}
+                  ) : (
+                    displayedWords.map((item, idx) => {
+                      const displayIdx = pageSize === 'all' ? idx + 1 : (currentPage - 1) * (pageSize as number) + idx + 1;
+                      return (
+                        <tr key={item.id || idx} className="hover:bg-slate-50/80 transition-colors">
+                          <td className="py-2.5 px-3 text-center text-slate-400 font-mono text-[11px]">
+                            {displayIdx}
+                          </td>
+                          <td className="py-2.5 px-3 font-semibold text-slate-900 font-sans-kr">
+                            {item.hangul || item.word}
+                          </td>
+                          <td className="py-2.5 px-3">
+                            <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 text-[10px] font-mono">
+                              {item.type || '단어'}
+                            </span>
+                          </td>
+                          <td className="py-2.5 px-3 text-slate-500 text-[11px] font-mono">
+                            {item.origin || item.hanja_or_root || '-'}
+                          </td>
+                          <td className="py-2.5 px-3 text-slate-800">
+                            {item.meaning_zh || '-'}
+                          </td>
+                          <td className="py-2.5 px-3 text-slate-500 text-[11px] max-w-xs truncate" title={`${item.example_kr || ''} ${item.example_zh || ''}`}>
+                            {item.example_kr ? `${item.example_kr} (${item.example_zh || ''})` : '-'}
+                          </td>
+                          <td className="py-2.5 px-3 text-center">
+                            <button
+                              onClick={() => speakKorean(item.hangul || item.word)}
+                              className="p-1 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded transition-colors"
+                              title="播放发音"
+                            >
+                              <Volume2 size={13} />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
                 </tbody>
               </table>
-
-              {displayedWords.length === 0 && (
-                <div className="p-8 text-center text-xs text-slate-400">
-                  未找到匹配的词汇条目
-                </div>
-              )}
             </div>
 
-            {/* Pagination controls */}
+            {/* Pagination Controls */}
             {pageSize !== 'all' && totalPages > 1 && (
-              <div className="flex items-center justify-between pt-1 text-xs text-slate-600">
-                <span>
-                  显示 {(currentPage - 1) * (typeof pageSize === 'number' ? pageSize : 50) + 1} - {Math.min(currentPage * (typeof pageSize === 'number' ? pageSize : 50), totalFiltered)} 条 / 共 {totalFiltered} 条
+              <div className="flex items-center justify-between pt-2">
+                <span className="text-[11px] text-slate-400 font-mono">
+                  第 {currentPage} / {totalPages} 页 (共 {totalFiltered} 词)
                 </span>
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1">
                   <button
-                    type="button"
-                    disabled={currentPage <= 1}
                     onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                    className="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                    disabled={currentPage === 1}
+                    className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-30 disabled:hover:bg-transparent"
                   >
                     <ChevronLeft size={13} />
                   </button>
-                  <span className="px-2 font-mono text-[11px]">
-                    {currentPage} / {totalPages}
+                  <span className="px-2 text-xs font-mono text-slate-700">
+                    {currentPage}
                   </span>
                   <button
-                    type="button"
-                    disabled={currentPage >= totalPages}
                     onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                    className="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                    disabled={currentPage === totalPages}
+                    className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-30 disabled:hover:bg-transparent"
                   >
                     <ChevronRight size={13} />
                   </button>
@@ -875,124 +1082,6 @@ export const LexiconUploadCenter: React.FC<Props> = ({
           </div>
         </div>
       )}
-
-      {/* Edit Single Word Modal */}
-      {editingWord && (
-        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl p-5 max-w-md w-full shadow-xl border border-black/[0.06] space-y-4 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <div>
-                <h4 className="text-sm font-semibold text-slate-900">编辑词条信息</h4>
-                <p className="text-[11px] text-slate-400">精确修正中英文释义与例句</p>
-              </div>
-              <button
-                onClick={() => setEditingWord(null)}
-                className="text-slate-400 hover:text-slate-600 p-1"
-              >
-                <X size={15} />
-              </button>
-            </div>
-            
-            <div className="space-y-3 text-xs">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-[11px] font-medium text-slate-600 block mb-1">
-                    韩语单词 (Hangul)
-                  </label>
-                  <input
-                    type="text"
-                    value={editingWord.hangul || editingWord.word}
-                    onChange={(e) => setEditingWord({ ...editingWord, hangul: e.target.value, word: e.target.value })}
-                    className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 font-semibold focus:outline-none focus:bg-white focus:border-slate-800"
-                  />
-                </div>
-                <div>
-                  <label className="text-[11px] font-medium text-slate-600 block mb-1">
-                    词性 (POS)
-                  </label>
-                  <input
-                    type="text"
-                    value={editingWord.type || ''}
-                    onChange={(e) => setEditingWord({ ...editingWord, type: e.target.value })}
-                    className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:outline-none focus:bg-white focus:border-slate-800"
-                    placeholder="如：명사 (名词)"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="text-[11px] font-medium text-slate-600 block mb-1">
-                  中文释义 (Chinese)
-                </label>
-                <input
-                  type="text"
-                  value={editingWord.meaning_zh || ''}
-                  onChange={(e) => setEditingWord({ ...editingWord, meaning_zh: e.target.value })}
-                  className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:bg-white focus:border-slate-800"
-                  placeholder="如：家务，家事"
-                />
-              </div>
-
-              <div>
-                <label className="text-[11px] font-medium text-slate-600 block mb-1">
-                  英文释义 (English)
-                </label>
-                <input
-                  type="text"
-                  value={editingWord.meaning_en || ''}
-                  onChange={(e) => setEditingWord({ ...editingWord, meaning_en: e.target.value })}
-                  className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:bg-white focus:border-slate-800"
-                  placeholder="如：housework, domestic chores"
-                />
-              </div>
-
-              <div>
-                <label className="text-[11px] font-medium text-slate-600 block mb-1">
-                  韩语例句
-                </label>
-                <textarea
-                  rows={2}
-                  value={editingWord.example_kr || ''}
-                  onChange={(e) => setEditingWord({ ...editingWord, example_kr: e.target.value })}
-                  className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:outline-none focus:bg-white focus:border-slate-800 resize-none"
-                  placeholder="韩语例句..."
-                />
-              </div>
-
-              <div>
-                <label className="text-[11px] font-medium text-slate-600 block mb-1">
-                  例句翻译
-                </label>
-                <input
-                  type="text"
-                  value={editingWord.example_zh || ''}
-                  onChange={(e) => setEditingWord({ ...editingWord, example_zh: e.target.value })}
-                  className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:outline-none focus:bg-white focus:border-slate-800"
-                  placeholder="中文例句翻译..."
-                />
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
-              <button
-                type="button"
-                onClick={() => setEditingWord(null)}
-                className="px-3.5 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
-              >
-                取消
-              </button>
-              <button
-                type="button"
-                onClick={handleSaveWordEdit}
-                className="px-4 py-1.5 text-xs font-semibold bg-slate-900 text-white hover:bg-black rounded-lg transition-colors shadow-sm"
-              >
-                保存修改
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
     </div>
   );
 };

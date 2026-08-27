@@ -288,7 +288,7 @@ export const SettingsView: React.FC<Props> = ({
     gemini: {
       defaultModel: 'gemini-3.7-flash',
       defaultBaseURL: '',
-      placeholderKey: 'AQ... 或 AIzaSy... (从 aistudio.google.com 创建)',
+      placeholderKey: '填入 Google AI Studio API Key',
       popularModels: ['gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite', 'gemini-3.1-pro-preview']
     },
     anthropic: {
@@ -320,21 +320,21 @@ export const SettingsView: React.FC<Props> = ({
   return (
     <div className="w-full max-w-2xl mx-auto px-3.5 sm:px-6 py-6 pb-36 space-y-6 animate-in fade-in duration-300 h-full overflow-y-auto overflow-x-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-stone-200/80 pb-4">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-stone-900 text-white flex items-center justify-center shadow-xs">
-            <Settings size={20} />
+      <div className="flex items-center justify-between border-b border-stone-200/80 pb-3">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-stone-900 text-white flex items-center justify-center shadow-xs">
+            <Settings size={17} />
           </div>
           <div>
-            <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-stone-900 font-sans">
-              设置与接口 (Settings & API)
+            <h1 className="text-lg sm:text-xl font-bold tracking-tight text-stone-900 font-sans">
+              设置 (Settings)
             </h1>
-            <p className="text-xs text-stone-500">API 接口配置、MiniMax 声音克隆与偏好设置</p>
+            <p className="text-xs text-stone-500">接口配置与学习偏好</p>
           </div>
         </div>
         {savedSuccess && (
-          <div className="flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
-            <CheckCircle2 size={13} />
+          <div className="flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
+            <CheckCircle2 size={12} />
             <span>已保存</span>
           </div>
         )}
@@ -343,22 +343,22 @@ export const SettingsView: React.FC<Props> = ({
       {/* User Profile Card */}
       <div 
         onClick={() => setIsProfileModalOpen(true)}
-        className="bg-white p-4 sm:p-5 rounded-2xl shadow-xs border border-stone-200/80 flex items-center justify-between gap-3 hover:border-stone-400 transition-all cursor-pointer group"
+        className="bg-white p-3.5 sm:p-4 rounded-2xl shadow-xs border border-stone-200/80 flex items-center justify-between gap-3 hover:border-stone-400 transition-all cursor-pointer group"
       >
-        <div className="flex items-center gap-3.5 min-w-0">
-          <div className="w-12 h-12 rounded-lg bg-stone-100 text-stone-700 flex items-center justify-center font-medium text-lg shadow-xs overflow-hidden shrink-0 border border-stone-200">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-10 h-10 rounded-xl bg-stone-100 text-stone-700 flex items-center justify-center font-medium text-base shadow-xs overflow-hidden shrink-0 border border-stone-200">
             {userProfile.avatarUrl ? (
-              <img src={userProfile.avatarUrl} alt="avatar" referrerPolicy="no-referrer" className="w-full h-full object-cover rounded-lg" />
+              <img src={userProfile.avatarUrl} alt="avatar" referrerPolicy="no-referrer" className="w-full h-full object-cover" />
             ) : (
               <span>{(userProfile.userName || userProfile.name || 'ME').slice(0, 2)}</span>
             )}
           </div>
           <div className="min-w-0 flex-1">
-            <div className="font-semibold text-sm sm:text-base text-stone-900 flex items-center gap-1.5 flex-wrap">
+            <div className="font-semibold text-sm text-stone-900 flex items-center gap-1.5 flex-wrap">
               <span className="truncate">{userProfile.userName || userProfile.name}</span>
               {userProfile.userCallSign && (
-                <span className="text-[11px] px-2 py-0.5 bg-stone-100 text-stone-700 rounded-md font-normal shrink-0">
-                  专属称呼: {userProfile.userCallSign}
+                <span className="text-[11px] px-1.5 py-0.2 bg-stone-100 text-stone-700 rounded-md font-normal shrink-0">
+                  称呼: {userProfile.userCallSign}
                 </span>
               )}
             </div>
@@ -372,10 +372,10 @@ export const SettingsView: React.FC<Props> = ({
             e.stopPropagation();
             setIsProfileModalOpen(true);
           }}
-          className="px-3.5 py-1.5 bg-stone-100 group-hover:bg-stone-900 group-hover:text-white text-stone-700 text-xs font-medium rounded-xl transition-colors flex items-center gap-1 shrink-0 cursor-pointer"
+          className="px-3 py-1.5 bg-stone-100 group-hover:bg-stone-900 group-hover:text-white text-stone-700 text-xs font-medium rounded-xl transition-colors flex items-center gap-1 shrink-0 cursor-pointer"
         >
-          <User size={13} />
-          <span>编辑资料</span>
+          <User size={12} />
+          <span>编辑</span>
         </button>
       </div>
 
@@ -393,33 +393,30 @@ export const SettingsView: React.FC<Props> = ({
       )}
 
       {/* SECTION 1: LLM API Configuration Center */}
-      <div className="bg-white p-6 rounded-2xl shadow-xs border border-stone-200 space-y-6">
-        <div className="flex items-center justify-between border-b border-stone-100 pb-3">
-          <div className="flex items-center gap-2.5 text-stone-900 font-bold">
-            <Server size={20} className="text-stone-900" />
-            <div className="flex flex-col">
-              <span className="text-base font-bold">LLM API Configuration (大模型接口配置)</span>
-              <span className="text-xs font-normal text-stone-500">支持 Gemini / Claude / OpenAI / DeepSeek / 自定义中转接口</span>
-            </div>
+      <div className="bg-white p-4 sm:p-5 rounded-2xl shadow-xs border border-stone-200/80 space-y-4">
+        <div className="flex items-center justify-between border-b border-stone-100 pb-2.5">
+          <div className="flex items-center gap-2 text-stone-900 font-bold">
+            <Server size={17} className="text-stone-900" />
+            <span className="text-sm sm:text-base font-bold">模型接口 (LLM API)</span>
           </div>
-          <span className="text-xs font-semibold px-2.5 py-1 bg-stone-100 text-stone-800 rounded-full border border-stone-200">
-            Real LLM Request
+          <span className="text-[11px] font-medium px-2 py-0.5 bg-stone-100 text-stone-700 rounded-full border border-stone-200">
+            {llmConfig.provider.toUpperCase()}
           </span>
         </div>
 
-        <div className="space-y-5">
+        <div className="space-y-3.5">
           {/* Provider Select */}
           <div>
-            <label className="block text-xs font-bold text-stone-700 mb-1.5">
-              LLM Provider (模型服务商)
+            <label className="block text-xs font-semibold text-stone-700 mb-1.5">
+              服务商 (Provider)
             </label>
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5">
               {[
-                { id: 'gemini', label: 'Google Gemini' },
-                { id: 'anthropic', label: 'Claude (Anthropic)' },
+                { id: 'gemini', label: 'Gemini' },
+                { id: 'anthropic', label: 'Claude' },
                 { id: 'deepseek', label: 'DeepSeek' },
                 { id: 'openai', label: 'OpenAI' },
-                { id: 'custom', label: 'Custom (中转)' },
+                { id: 'custom', label: 'Custom' },
               ].map((p) => {
                 const isSelected = llmConfig.provider === p.id;
                 return (
@@ -427,7 +424,7 @@ export const SettingsView: React.FC<Props> = ({
                     key={p.id}
                     type="button"
                     onClick={() => handleSelectProvider(p.id as any)}
-                    className={`py-2 px-2.5 rounded-xl text-xs font-bold transition border text-center cursor-pointer ${
+                    className={`py-1.5 px-2 rounded-xl text-xs font-semibold transition border text-center cursor-pointer ${
                       isSelected
                         ? 'bg-stone-900 text-white border-stone-900 shadow-xs'
                         : 'bg-stone-50 text-stone-700 border-stone-200 hover:bg-stone-100'
@@ -442,29 +439,27 @@ export const SettingsView: React.FC<Props> = ({
 
           {/* API Key */}
           <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="text-xs font-bold text-stone-700 flex items-center gap-1.5">
-                <Key size={13} className="text-stone-500" />
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-xs font-semibold text-stone-700 flex items-center gap-1">
+                <Key size={12} className="text-stone-500" />
                 <span>API Key</span>
-                <span className="text-[10px] text-stone-400 font-normal">（可输入或粘贴）</span>
               </label>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5">
                 <button
                   type="button"
                   onClick={() => setShowLlmKey(!showLlmKey)}
-                  className="text-[11px] text-stone-500 hover:text-stone-900 flex items-center gap-1 transition cursor-pointer"
-                  title={showLlmKey ? "隐藏密文" : "显示明文"}
+                  className="text-[10.5px] text-stone-500 hover:text-stone-900 flex items-center gap-0.5 cursor-pointer"
                 >
-                  {showLlmKey ? <EyeOff size={13} /> : <Eye size={13} />}
+                  {showLlmKey ? <EyeOff size={11} /> : <Eye size={11} />}
                   <span>{showLlmKey ? '隐藏' : '显示'}</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => handlePasteToField((val) => handleUpdateLLMField('apiKey', val))}
-                  className="text-[11px] text-stone-700 bg-stone-100 hover:bg-stone-200 px-2 py-0.5 rounded-md flex items-center gap-1 transition cursor-pointer font-medium"
+                  className="text-[10.5px] text-stone-700 bg-stone-100 hover:bg-stone-200 px-1.5 py-0.5 rounded-md flex items-center gap-0.5 cursor-pointer font-medium"
                 >
-                  <Clipboard size={12} />
-                  <span>剪贴板粘贴</span>
+                  <Clipboard size={10} />
+                  <span>粘贴</span>
                 </button>
               </div>
             </div>
@@ -479,92 +474,116 @@ export const SettingsView: React.FC<Props> = ({
                 value={llmConfig.apiKey || ''}
                 onChange={(e) => handleUpdateLLMField('apiKey', e.target.value)}
                 onPaste={(e) => {
-                  // Allow standard browser paste
                   const pasted = e.clipboardData.getData('text');
-                  if (pasted) {
-                    handleUpdateLLMField('apiKey', pasted.trim());
-                  }
+                  if (pasted) handleUpdateLLMField('apiKey', pasted.trim());
                 }}
-                className="w-full text-xs font-mono px-3.5 py-2.5 pr-8 rounded-xl border border-stone-300 bg-stone-50/70 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-stone-900 focus:border-stone-900 transition-all text-stone-900"
+                className="w-full text-xs font-mono px-3 py-2 pr-8 rounded-xl border border-stone-300 bg-stone-50/70 focus:bg-white focus:outline-hidden focus:ring-1 focus:ring-stone-900 transition-all text-stone-900"
               />
               {Boolean(llmConfig.apiKey) && (
                 <button
                   type="button"
                   onClick={() => handleUpdateLLMField('apiKey', '')}
-                  className="absolute right-2.5 text-stone-400 hover:text-stone-600 p-1 cursor-pointer"
+                  className="absolute right-2 text-stone-400 hover:text-stone-600 p-1 cursor-pointer"
                   title="清空"
                 >
-                  <X size={14} />
+                  <X size={13} />
                 </button>
               )}
             </div>
-            {llmConfig.provider === 'gemini' && (
-              <div className="mt-2 space-y-1.5">
-                <div className="flex items-center justify-between text-[11px]">
-                  <a
-                    href="https://aistudio.google.com/app/apikey"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-slate-600 hover:text-slate-900 font-medium hover:underline inline-flex items-center gap-1"
+            {/* Smart Key Format Detection Hint */}
+            {Boolean(llmConfig.apiKey) && (
+              <div className="mt-1">
+                {llmConfig.apiKey?.startsWith('sk-ant-') && llmConfig.provider !== 'anthropic' && (
+                  <button
+                    type="button"
+                    onClick={() => handleSelectProvider('anthropic')}
+                    className="w-full text-left text-[11px] p-2 bg-amber-50 hover:bg-amber-100 text-amber-900 rounded-xl border border-amber-200 transition flex items-center justify-between gap-1 cursor-pointer"
                   >
-                    <span>前往 Google AI Studio 获取 Gemini API Key</span>
-                    <ExternalLink size={11} />
-                  </a>
-                </div>
-                {!llmConfig.apiKey && (
-                  <div className="text-[11px] text-emerald-800 bg-emerald-50/80 p-2.5 rounded-xl border border-emerald-200/60 flex items-center justify-between">
-                    <span className="flex items-center gap-1.5 font-medium">
-                      <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0 animate-pulse"></span>
-                      当前已使用系统预置的 Google Gemini 服务（无需配置 Key 即可正常对话与学习）。
-                    </span>
-                  </div>
+                    <span>💡 检测到这是 <strong>Anthropic (Claude)</strong> 的 API Key，点击一键切换为 Claude</span>
+                    <span className="font-bold underline shrink-0">立即切换 &rarr;</span>
+                  </button>
                 )}
-                {Boolean(llmConfig.apiKey) && (llmConfig.apiKey.startsWith('AQ.') || llmConfig.apiKey.startsWith('AIzaSy')) && (
-                  <div className="text-[11px] text-emerald-800 bg-emerald-50/80 p-2.5 rounded-xl border border-emerald-200/60 flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0"></span>
-                    <span>
-                      已识别为 Google AI Studio 官方密钥（{llmConfig.apiKey.startsWith('AQ.') ? '新版 Auth Key: AQ...' : '标准 Key: AIzaSy...'}），支持所有模型与韩语伴学功能。
-                    </span>
-                  </div>
-                )}
-                {Boolean(llmConfig.apiKey) && llmConfig.apiKey.startsWith('ya29.') && (
-                  <div className="text-[11px] text-amber-800 bg-amber-50 p-2.5 rounded-xl border border-amber-200 space-y-1">
-                    <p className="font-semibold flex items-center gap-1">
-                      <span>识别为 Google Cloud OAuth2 临时令牌 (ya29.)：</span>
-                    </p>
-                    <p className="text-[10.5px] leading-relaxed text-amber-700">
-                      系统已启用 Bearer 认证模式。此类令牌通常为临时凭据（约 1 小时过期）。建议直接使用 Google AI Studio 创建的标准 API Key。
-                    </p>
-                  </div>
-                )}
-                {Boolean(llmConfig.apiKey) && llmConfig.apiKey.startsWith('sk-') && (
-                  <div className="text-[11px] text-slate-800 bg-slate-50 p-2.5 rounded-xl border border-black/[0.06] space-y-1.5">
-                    <p className="font-semibold flex items-center gap-1">
-                      <span>检测到您的 Key 为 "sk-" 格式（属于 OpenAI / DeepSeek / 中转服务商）：</span>
-                    </p>
-                    <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
-                      <button
-                        type="button"
-                        onClick={() => handleSelectProvider('deepseek')}
-                        className="px-2 py-0.5 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded font-semibold text-[10px] cursor-pointer transition"
-                      >
-                        切换为 DeepSeek
-                      </button>
+                {llmConfig.apiKey?.startsWith('sk-') && !llmConfig.apiKey?.startsWith('sk-ant-') && llmConfig.provider === 'gemini' && (
+                  <div className="text-[11px] p-2 bg-blue-50 text-blue-900 rounded-xl border border-blue-200 flex flex-wrap items-center justify-between gap-1.5">
+                    <span>💡 检测到这可能是 OpenAI / DeepSeek / 中转站 Key：</span>
+                    <div className="flex items-center gap-1">
                       <button
                         type="button"
                         onClick={() => handleSelectProvider('openai')}
-                        className="px-2 py-0.5 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded font-semibold text-[10px] cursor-pointer transition"
+                        className="px-2 py-0.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[10px] font-semibold cursor-pointer"
                       >
-                        切换为 OpenAI
+                        切为 OpenAI
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleSelectProvider('deepseek')}
+                        className="px-2 py-0.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[10px] font-semibold cursor-pointer"
+                      >
+                        切为 DeepSeek
                       </button>
                       <button
                         type="button"
                         onClick={() => handleSelectProvider('custom')}
-                        className="px-2 py-0.5 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded font-semibold text-[10px] cursor-pointer transition"
+                        className="px-2 py-0.5 bg-stone-700 hover:bg-stone-800 text-white rounded-lg text-[10px] font-semibold cursor-pointer"
                       >
-                        切换为 Custom (中转)
+                        切为 Custom 中转
                       </button>
                     </div>
+                  </div>
+                )}
+                {llmConfig.apiKey?.startsWith('AIzaSy') && llmConfig.provider !== 'gemini' && (
+                  <button
+                    type="button"
+                    onClick={() => handleSelectProvider('gemini')}
+                    className="w-full text-left text-[11px] p-2 bg-amber-50 hover:bg-amber-100 text-amber-900 rounded-xl border border-amber-200 transition flex items-center justify-between gap-1 cursor-pointer"
+                  >
+                    <span>💡 检测到这是 <strong>Google Gemini</strong> 的 API Key，点击一键切换为 Gemini</span>
+                    <span className="font-bold underline shrink-0">立即切换 &rarr;</span>
+                  </button>
+                )}
+              </div>
+            )}
+
+            {llmConfig.provider === 'gemini' && (
+              <div className="mt-1.5 space-y-1">
+                <div className="flex items-center justify-between text-[10.5px]">
+                  <a
+                    href="https://aistudio.google.com/app/apikey"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-slate-600 hover:text-slate-900 font-medium hover:underline inline-flex items-center gap-0.5"
+                  >
+                    <span>Google AI Studio 获取 Key</span>
+                    <ExternalLink size={10} />
+                  </a>
+                  {Boolean(llmConfig.apiKey) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleUpdateLLMField('apiKey', '');
+                        handleUpdateLLMField('baseURL', '');
+                        handleUpdateLLMField('model', 'gemini-3.7-flash');
+                        setLlmTestStatus(null);
+                        showSuccessToast('✅ 已恢复默认', '已恢复使用系统内置免费 Gemini 服务');
+                      }}
+                      className="text-stone-500 hover:text-stone-900 hover:underline cursor-pointer"
+                    >
+                      恢复使用系统内置免费服务
+                    </button>
+                  )}
+                </div>
+                {!llmConfig.apiKey && (
+                  <div className="text-[10.5px] text-emerald-800 bg-emerald-50/80 p-2 rounded-xl border border-emerald-200/60 flex items-center justify-between">
+                    <span className="flex items-center gap-1.5 font-medium">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0 animate-pulse"></span>
+                      已启用系统预置 Gemini 服务，无需填写 Key 即可畅享全功能。
+                    </span>
+                  </div>
+                )}
+                {Boolean(llmConfig.apiKey) && (
+                  <div className="text-[10.5px] text-emerald-800 bg-emerald-50/80 p-2 rounded-xl border border-emerald-200/60 flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0"></span>
+                    <span>已配置自定义 API Key。</span>
                   </div>
                 )}
               </div>
@@ -572,19 +591,19 @@ export const SettingsView: React.FC<Props> = ({
           </div>
 
           {/* Base URL & Model Name */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="text-xs font-bold text-stone-700 flex items-center gap-1.5">
-                  <Globe size={13} className="text-stone-500" />
-                  <span>Base URL / Endpoint (可选)</span>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs font-semibold text-stone-700 flex items-center gap-1">
+                  <Globe size={11} className="text-stone-500" />
+                  <span>Base URL (可选)</span>
                 </label>
                 <button
                   type="button"
                   onClick={() => handlePasteToField((val) => handleUpdateLLMField('baseURL', val))}
-                  className="text-[10px] text-stone-500 hover:text-stone-800 flex items-center gap-0.5 cursor-pointer"
+                  className="text-[9.5px] text-stone-500 hover:text-stone-800 flex items-center gap-0.5 cursor-pointer"
                 >
-                  <Clipboard size={11} />
+                  <Clipboard size={10} />
                   <span>粘贴</span>
                 </button>
               </div>
@@ -597,42 +616,37 @@ export const SettingsView: React.FC<Props> = ({
                   spellCheck={false}
                   placeholder={
                     llmConfig.provider === 'gemini' 
-                      ? '官方端点（默认留空即可）' 
+                      ? '默认官方端点' 
                       : (providerPresets[llmConfig.provider]?.defaultBaseURL || 'https://api.openai.com/v1')
                   }
                   value={llmConfig.baseURL || ''}
                   onChange={(e) => handleUpdateLLMField('baseURL', e.target.value)}
-                  onPaste={(e) => {
-                    const pasted = e.clipboardData.getData('text');
-                    if (pasted) handleUpdateLLMField('baseURL', pasted.trim());
-                  }}
-                  className="w-full text-xs font-mono px-3.5 py-2.5 pr-8 rounded-xl border border-stone-300 bg-stone-50/70 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-stone-900 focus:border-stone-900 transition-all text-stone-900"
+                  className="w-full text-xs font-mono px-3 py-2 pr-7 rounded-xl border border-stone-300 bg-stone-50/70 focus:bg-white focus:outline-hidden focus:ring-1 focus:ring-stone-900 transition-all text-stone-900"
                 />
                 {Boolean(llmConfig.baseURL) && (
                   <button
                     type="button"
                     onClick={() => handleUpdateLLMField('baseURL', '')}
-                    className="absolute right-2.5 text-stone-400 hover:text-stone-600 p-1 cursor-pointer"
-                    title="清空"
+                    className="absolute right-2 text-stone-400 hover:text-stone-600 p-1 cursor-pointer"
                   >
-                    <X size={14} />
+                    <X size={13} />
                   </button>
                 )}
               </div>
             </div>
 
             <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="text-xs font-bold text-stone-700 flex items-center gap-1.5">
-                  <Sliders size={13} className="text-stone-500" />
-                  <span>Model Name (模型标识)</span>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs font-semibold text-stone-700 flex items-center gap-1">
+                  <Sliders size={11} className="text-stone-500" />
+                  <span>模型名称 (Model)</span>
                 </label>
                 <button
                   type="button"
                   onClick={() => handlePasteToField((val) => handleUpdateLLMField('model', val))}
-                  className="text-[10px] text-stone-500 hover:text-stone-800 flex items-center gap-0.5 cursor-pointer"
+                  className="text-[9.5px] text-stone-500 hover:text-stone-800 flex items-center gap-0.5 cursor-pointer"
                 >
-                  <Clipboard size={11} />
+                  <Clipboard size={10} />
                   <span>粘贴</span>
                 </button>
               </div>
@@ -646,20 +660,15 @@ export const SettingsView: React.FC<Props> = ({
                   placeholder={providerPresets[llmConfig.provider]?.defaultModel || 'gpt-4o'}
                   value={llmConfig.model || ''}
                   onChange={(e) => handleUpdateLLMField('model', e.target.value)}
-                  onPaste={(e) => {
-                    const pasted = e.clipboardData.getData('text');
-                    if (pasted) handleUpdateLLMField('model', pasted.trim());
-                  }}
-                  className="w-full text-xs font-mono px-3.5 py-2.5 pr-8 rounded-xl border border-stone-300 bg-stone-50/70 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-stone-900 focus:border-stone-900 transition-all text-stone-900"
+                  className="w-full text-xs font-mono px-3 py-2 pr-7 rounded-xl border border-stone-300 bg-stone-50/70 focus:bg-white focus:outline-hidden focus:ring-1 focus:ring-stone-900 transition-all text-stone-900"
                 />
                 {Boolean(llmConfig.model) && (
                   <button
                     type="button"
                     onClick={() => handleUpdateLLMField('model', '')}
-                    className="absolute right-2.5 text-stone-400 hover:text-stone-600 p-1 cursor-pointer"
-                    title="清空"
+                    className="absolute right-2 text-stone-400 hover:text-stone-600 p-1 cursor-pointer"
                   >
-                    <X size={14} />
+                    <X size={13} />
                   </button>
                 )}
               </div>
@@ -668,14 +677,14 @@ export const SettingsView: React.FC<Props> = ({
 
           {/* Quick Model Chips */}
           {providerPresets[llmConfig.provider]?.popularModels && (
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="text-[10px] text-stone-400 font-semibold uppercase">推荐模型:</span>
+            <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+              <span className="text-[10px] text-stone-400 font-semibold uppercase">推荐:</span>
               {providerPresets[llmConfig.provider].popularModels.map((m) => (
                 <button
                   key={m}
                   type="button"
                   onClick={() => handleUpdateLLMField('model', m)}
-                  className={`text-[11px] px-2 py-0.5 rounded-md border transition cursor-pointer font-mono ${
+                  className={`text-[10.5px] px-2 py-0.5 rounded-md border transition cursor-pointer font-mono ${
                     llmConfig.model === m
                       ? 'bg-stone-900 text-white border-stone-900 font-bold'
                       : 'bg-stone-100 text-stone-600 border-stone-200 hover:bg-stone-200'
@@ -688,55 +697,44 @@ export const SettingsView: React.FC<Props> = ({
           )}
 
           {/* Test Button & Status */}
-          <div className="pt-2 flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+          <div className="pt-1 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
             <button
               type="button"
               onClick={handleTestLLM}
               disabled={isTestingLLM}
-              className="flex items-center justify-center gap-2 py-2.5 px-5 bg-stone-900 text-white rounded-xl text-xs font-bold hover:bg-stone-800 transition shadow-xs disabled:opacity-50 cursor-pointer shrink-0"
+              className="flex items-center justify-center gap-1.5 py-2 px-4 bg-stone-900 text-white rounded-xl text-xs font-bold hover:bg-stone-800 transition shadow-xs disabled:opacity-50 cursor-pointer shrink-0"
             >
-              <Zap size={14} className={isTestingLLM ? 'animate-spin text-amber-300' : 'text-amber-400'} />
-              <span>{isTestingLLM ? '正在连接测试...' : 'Test Connection (测试连接)'}</span>
+              <Zap size={13} className={isTestingLLM ? 'animate-spin text-amber-300' : 'text-amber-400'} />
+              <span>{isTestingLLM ? '测试中...' : '测试连接 (Test)'}</span>
             </button>
 
             {llmTestStatus && (
               <div
-                className={`flex-1 p-3 rounded-xl border text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 ${
+                className={`flex-1 p-2.5 rounded-xl border text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2 ${
                   llmTestStatus.ok
                     ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
                     : 'bg-rose-50 text-rose-800 border-rose-200'
                 }`}
               >
-                <div className="flex items-start gap-2">
-                  {llmTestStatus.ok ? <CheckCircle2 size={16} className="shrink-0 text-emerald-600 mt-0.5" /> : <AlertCircle size={16} className="shrink-0 text-rose-600 mt-0.5" />}
-                  <span className="font-medium leading-relaxed">{llmTestStatus.message}</span>
+                <div className="flex items-center gap-1.5 min-w-0">
+                  {llmTestStatus.ok ? <CheckCircle2 size={14} className="shrink-0 text-emerald-600" /> : <AlertCircle size={14} className="shrink-0 text-rose-600" />}
+                  <span className="font-medium break-words">{llmTestStatus.message}</span>
                 </div>
                 {!llmTestStatus.ok && (
-                  <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
-                    {Boolean(llmConfig.apiKey) && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          handleUpdateLLMField('apiKey', '');
-                          setLlmTestStatus(null);
-                        }}
-                        className="px-2.5 py-1 bg-white hover:bg-stone-100 text-stone-700 rounded-lg border border-stone-300 font-semibold text-[11px] cursor-pointer transition shadow-2xs"
-                      >
-                        清空 Key (使用预置环境)
-                      </button>
-                    )}
-                    {llmConfig.provider === 'gemini' && (
-                      <a
-                        href="https://aistudio.google.com/app/apikey"
-                        target="_blank"
-                        rel="noreferrer"
-                        className="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-semibold text-[11px] cursor-pointer transition shadow-2xs inline-flex items-center gap-1"
-                      >
-                        <span>获取新 Key</span>
-                        <ExternalLink size={10} />
-                      </a>
-                    )}
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleSelectProvider('gemini');
+                      handleUpdateLLMField('apiKey', '');
+                      handleUpdateLLMField('baseURL', '');
+                      handleUpdateLLMField('model', 'gemini-3.7-flash');
+                      setLlmTestStatus(null);
+                      showSuccessToast('✅ 已恢复默认', '已恢复使用系统内置免费 Gemini 服务');
+                    }}
+                    className="self-end sm:self-auto px-2.5 py-1 bg-white hover:bg-stone-100 text-stone-800 rounded-lg text-[11px] font-bold border border-rose-200 shrink-0 cursor-pointer shadow-2xs"
+                  >
+                    🔄 一键恢复系统内置免费服务
+                  </button>
                 )}
               </div>
             )}
@@ -745,34 +743,31 @@ export const SettingsView: React.FC<Props> = ({
       </div>
 
       {/* SECTION 2: MiniMax Voice Cloning Engine */}
-      <div className="bg-white p-6 rounded-2xl shadow-xs border border-stone-200 space-y-6">
-        <div className="flex items-center justify-between border-b border-stone-100 pb-3">
-          <div className="flex items-center gap-2.5 text-stone-900 font-bold">
-            <Mic size={20} className="text-stone-900" />
-            <div className="flex flex-col">
-              <span className="text-base font-bold">MiniMax Voice Clone Pipeline</span>
-              <span className="text-xs font-normal text-stone-500">7位专属爱豆声音克隆与音色控制台</span>
-            </div>
+      <div className="bg-white p-4 sm:p-5 rounded-2xl shadow-xs border border-stone-200/80 space-y-4">
+        <div className="flex items-center justify-between border-b border-stone-100 pb-2.5">
+          <div className="flex items-center gap-2 text-stone-900 font-bold">
+            <Mic size={17} className="text-stone-900" />
+            <span className="text-sm sm:text-base font-bold">MiniMax 声音克隆 (Voice)</span>
           </div>
-          <span className="text-xs font-semibold px-2.5 py-1 bg-stone-100 text-stone-800 rounded-full border border-stone-200">
-            T2A Engine
+          <span className="text-[11px] font-medium px-2 py-0.5 bg-stone-100 text-stone-700 rounded-full border border-stone-200">
+            T2A
           </span>
         </div>
 
         {/* API Credentials */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="text-xs font-bold text-stone-700 flex items-center gap-1.5">
-                <Key size={13} className="text-stone-500" />
-                <span>MiniMax Group ID</span>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-xs font-semibold text-stone-700 flex items-center gap-1">
+                <Key size={11} className="text-stone-500" />
+                <span>Group ID</span>
               </label>
               <button
                 type="button"
                 onClick={() => handlePasteToField((val) => handleUpdateMinimaxField('group_id', val))}
-                className="text-[10px] text-stone-500 hover:text-stone-800 flex items-center gap-0.5 cursor-pointer"
+                className="text-[9.5px] text-stone-500 hover:text-stone-800 flex items-center gap-0.5 cursor-pointer"
               >
-                <Clipboard size={11} />
+                <Clipboard size={10} />
                 <span>粘贴</span>
               </button>
             </div>
@@ -783,35 +778,30 @@ export const SettingsView: React.FC<Props> = ({
                 type="text"
                 autoComplete="off"
                 spellCheck={false}
-                placeholder="e.g. 1823901..."
+                placeholder="Group ID..."
                 value={mmConfig.group_id || ''}
                 onChange={(e) => handleUpdateMinimaxField('group_id', e.target.value)}
-                onPaste={(e) => {
-                  const pasted = e.clipboardData.getData('text');
-                  if (pasted) handleUpdateMinimaxField('group_id', pasted.trim());
-                }}
-                className="w-full text-xs font-mono px-3.5 py-2.5 pr-8 rounded-xl border border-stone-300 bg-stone-50/70 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-stone-900 focus:border-stone-900 transition-all text-stone-900"
+                className="w-full text-xs font-mono px-3 py-2 pr-7 rounded-xl border border-stone-300 bg-stone-50/70 focus:bg-white focus:outline-hidden focus:ring-1 focus:ring-stone-900 transition-all text-stone-900"
               />
               {Boolean(mmConfig.group_id) && (
                 <button
                   type="button"
                   onClick={() => handleUpdateMinimaxField('group_id', '')}
-                  className="absolute right-2.5 text-stone-400 hover:text-stone-600 p-1 cursor-pointer"
-                  title="清空"
+                  className="absolute right-2 text-stone-400 hover:text-stone-600 p-1 cursor-pointer"
                 >
-                  <X size={14} />
+                  <X size={13} />
                 </button>
               )}
             </div>
           </div>
 
           <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="text-xs font-bold text-stone-700 flex items-center gap-1.5">
-                <Key size={13} className="text-stone-500" />
-                <span>MiniMax API Key</span>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-xs font-semibold text-stone-700 flex items-center gap-1">
+                <Key size={11} className="text-stone-500" />
+                <span>API Key</span>
               </label>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5">
                 <button
                   type="button"
                   onClick={() => setShowMmKey(!showMmKey)}
@@ -823,9 +813,9 @@ export const SettingsView: React.FC<Props> = ({
                 <button
                   type="button"
                   onClick={() => handlePasteToField((val) => handleUpdateMinimaxField('api_key', val))}
-                  className="text-[10px] text-stone-500 hover:text-stone-800 flex items-center gap-0.5 cursor-pointer"
+                  className="text-[9.5px] text-stone-500 hover:text-stone-800 flex items-center gap-0.5 cursor-pointer"
                 >
-                  <Clipboard size={11} />
+                  <Clipboard size={10} />
                   <span>粘贴</span>
                 </button>
               </div>
@@ -837,53 +827,48 @@ export const SettingsView: React.FC<Props> = ({
                 type={showMmKey ? "text" : "password"}
                 autoComplete="off"
                 spellCheck={false}
-                placeholder="eyJhbGciOi..."
+                placeholder="API Key..."
                 value={mmConfig.api_key || ''}
                 onChange={(e) => handleUpdateMinimaxField('api_key', e.target.value)}
-                onPaste={(e) => {
-                  const pasted = e.clipboardData.getData('text');
-                  if (pasted) handleUpdateMinimaxField('api_key', pasted.trim());
-                }}
-                className="w-full text-xs font-mono px-3.5 py-2.5 pr-8 rounded-xl border border-stone-300 bg-stone-50/70 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-stone-900 focus:border-stone-900 transition-all text-stone-900"
+                className="w-full text-xs font-mono px-3 py-2 pr-7 rounded-xl border border-stone-300 bg-stone-50/70 focus:bg-white focus:outline-hidden focus:ring-1 focus:ring-stone-900 transition-all text-stone-900"
               />
               {Boolean(mmConfig.api_key) && (
                 <button
                   type="button"
                   onClick={() => handleUpdateMinimaxField('api_key', '')}
-                  className="absolute right-2.5 text-stone-400 hover:text-stone-600 p-1 cursor-pointer"
-                  title="清空"
+                  className="absolute right-2 text-stone-400 hover:text-stone-600 p-1 cursor-pointer"
                 >
-                  <X size={14} />
+                  <X size={13} />
                 </button>
               )}
             </div>
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-stone-700 mb-1.5 flex items-center gap-1.5">
-              <Sliders size={13} className="text-stone-500" />
-              <span>Model Selection</span>
+            <label className="block text-xs font-semibold text-stone-700 mb-1 flex items-center gap-1">
+              <Sliders size={11} className="text-stone-500" />
+              <span>模型 (Model)</span>
             </label>
             <select
               value={mmConfig.model || 'speech-01-turbo'}
               onChange={(e) => handleUpdateMinimaxField('model', e.target.value)}
-              className="w-full text-xs font-medium px-3 py-2.5 rounded-xl border border-stone-300 bg-white focus:outline-hidden focus:ring-2 focus:ring-stone-900 focus:border-stone-900 transition-all text-stone-900"
+              className="w-full text-xs font-medium px-3 py-2 rounded-xl border border-stone-300 bg-white focus:outline-hidden focus:ring-1 focus:ring-stone-900 transition-all text-stone-900"
             >
-              <option value="speech-01-turbo">speech-01-turbo (Recommended)</option>
-              <option value="speech-01-hd">speech-01-hd (High Definition)</option>
-              <option value="speech-01">speech-01 (Standard)</option>
+              <option value="speech-01-turbo">speech-01-turbo (推荐)</option>
+              <option value="speech-01-hd">speech-01-hd (高保真)</option>
+              <option value="speech-01">speech-01 (标准)</option>
             </select>
           </div>
         </div>
 
         {/* Idol Voice Slots Manager */}
-        <div className="space-y-4 pt-2">
-          <div className="text-xs font-bold text-stone-700 uppercase tracking-wider">
-            爱豆与自定义好友音色通道配置 (Voice Slot Mapping)
+        <div className="space-y-3 pt-1">
+          <div className="text-xs font-semibold text-stone-700">
+            角色音色通道 (Voice Mapping)
           </div>
 
           {/* Idol Selector Pills */}
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-1.5">
             {companions.map((comp) => {
               const isActive = activeVoiceTab === comp.id;
               return (
@@ -891,7 +876,7 @@ export const SettingsView: React.FC<Props> = ({
                   key={comp.id}
                   type="button"
                   onClick={() => setActiveVoiceTab(comp.id)}
-                  className={`px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 border cursor-pointer ${
+                  className={`px-2.5 py-1.5 rounded-xl text-xs font-medium transition-all flex items-center gap-1.5 border cursor-pointer ${
                     isActive
                       ? 'bg-stone-900 text-white border-stone-900 shadow-xs'
                       : 'bg-stone-50 text-stone-600 border-stone-200 hover:bg-stone-100'
@@ -899,10 +884,9 @@ export const SettingsView: React.FC<Props> = ({
                 >
                   <CompanionAvatar
                     companion={comp}
-                    sizeClassName="w-6 h-6"
+                    sizeClassName="w-5 h-5"
                   />
                   <span>{comp.name_ko || comp.name_kr}</span>
-                  <span className="text-[10px] opacity-75 font-normal">({comp.badge || 'BUDDY'})</span>
                 </button>
               );
             })}
@@ -919,18 +903,18 @@ export const SettingsView: React.FC<Props> = ({
             };
 
             return (
-              <div className="bg-stone-50 p-4 rounded-xl border border-stone-200 space-y-4">
-                <div className="flex items-center justify-between flex-wrap gap-3">
-                  <div className="flex items-center gap-3.5">
+              <div className="bg-stone-50/70 p-3.5 rounded-xl border border-stone-200/80 space-y-3">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-2.5">
                     <CompanionAvatar
                       companion={currentCompanion}
-                      sizeClassName="w-14 h-14"
+                      sizeClassName="w-10 h-10"
                     />
                     <div>
-                      <div className="text-sm font-bold text-stone-800">
+                      <div className="text-xs font-bold text-stone-800">
                         {currentCompanion.name_ko || currentCompanion.name_kr} ({currentCompanion.badge || 'BUDDY'})
                       </div>
-                      <div className="text-xs text-stone-500 mt-0.5">{currentCompanion.voice_desc || 'MiniMax Voice Clone'}</div>
+                      <div className="text-[11px] text-stone-500">{currentCompanion.voice_desc || 'MiniMax Voice Clone'}</div>
                     </div>
                   </div>
 
@@ -938,46 +922,30 @@ export const SettingsView: React.FC<Props> = ({
                     type="button"
                     onClick={() => testIdolVoice(currentCompanion.id)}
                     disabled={testingAudio}
-                    className="flex items-center gap-1.5 px-3.5 py-2 bg-stone-900 text-white rounded-xl text-xs font-bold hover:bg-stone-800 transition shadow-xs disabled:opacity-50 cursor-pointer"
+                    className="flex items-center gap-1 px-3 py-1.5 bg-stone-900 text-white rounded-xl text-xs font-semibold hover:bg-stone-800 transition shadow-xs disabled:opacity-50 cursor-pointer"
                   >
-                    <Play size={13} className={testingAudio ? "animate-spin text-amber-300" : ""} />
-                    <span>{testingAudio ? '正在合成中...' : '试听音色 (Test Voice)'}</span>
+                    <Play size={11} className={testingAudio ? "animate-spin text-amber-300" : ""} />
+                    <span>{testingAudio ? '合成中...' : '试听音色'}</span>
                   </button>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5">
                   <div>
-                    <div className="flex items-center justify-between mb-1">
-                      <label className="text-[11px] font-bold text-stone-600">克隆声音 ID (Voice ID)</label>
-                      <button
-                        type="button"
-                        onClick={() => handlePasteToField((val) => handleUpdateVoiceSlot(currentCompanion.id, { voice_id: val }))}
-                        className="text-[9px] text-stone-500 hover:text-stone-800 flex items-center gap-0.5 cursor-pointer"
-                      >
-                        <Clipboard size={10} />
-                        <span>粘贴</span>
-                      </button>
-                    </div>
-                    <div className="relative flex items-center">
-                      <input
-                        id={`voice-slot-id-${currentCompanion.id}`}
-                        type="text"
-                        autoComplete="off"
-                        spellCheck={false}
-                        value={slot.voice_id}
-                        onChange={(e) => handleUpdateVoiceSlot(currentCompanion.id, { voice_id: e.target.value })}
-                        onPaste={(e) => {
-                          const pasted = e.clipboardData.getData('text');
-                          if (pasted) handleUpdateVoiceSlot(currentCompanion.id, { voice_id: pasted.trim() });
-                        }}
-                        placeholder="voice_id_xxx"
-                        className="w-full text-xs font-mono px-2.5 py-1.5 rounded-lg border border-stone-300 bg-white focus:outline-hidden focus:ring-2 focus:ring-stone-900 transition-all text-stone-900"
-                      />
-                    </div>
+                    <label className="block text-[11px] font-semibold text-stone-600 mb-1">Voice ID</label>
+                    <input
+                      id={`voice-slot-id-${currentCompanion.id}`}
+                      type="text"
+                      autoComplete="off"
+                      spellCheck={false}
+                      value={slot.voice_id}
+                      onChange={(e) => handleUpdateVoiceSlot(currentCompanion.id, { voice_id: e.target.value })}
+                      placeholder="voice_id_xxx"
+                      className="w-full text-xs font-mono px-2.5 py-1.5 rounded-lg border border-stone-300 bg-white focus:outline-hidden focus:ring-1 focus:ring-stone-900 transition-all text-stone-900"
+                    />
                   </div>
 
                   <div>
-                    <label className="block text-[11px] font-bold text-stone-600 mb-1">语速: {slot.speed || 1.0}x</label>
+                    <label className="block text-[11px] font-semibold text-stone-600 mb-1">语速: {slot.speed || 1.0}x</label>
                     <input
                       type="range"
                       min="0.7"
@@ -990,7 +958,7 @@ export const SettingsView: React.FC<Props> = ({
                   </div>
 
                   <div>
-                    <label className="block text-[11px] font-bold text-stone-600 mb-1">Pitch Tone: {slot.pitch || 0}</label>
+                    <label className="block text-[11px] font-semibold text-stone-600 mb-1">音调: {slot.pitch || 0}</label>
                     <input
                       type="range"
                       min="-5"
@@ -1003,20 +971,18 @@ export const SettingsView: React.FC<Props> = ({
                   </div>
 
                   <div>
-                    <label className="block text-[11px] font-bold text-stone-600 mb-1">Emotion Preset</label>
+                    <label className="block text-[11px] font-semibold text-stone-600 mb-1">情感 (Emotion)</label>
                     <select
                       value={slot.emotion || 'natural'}
                       onChange={(e) => handleUpdateVoiceSlot(currentCompanion.id, { emotion: e.target.value })}
-                      className="w-full text-xs px-2 py-1.5 rounded-lg border border-stone-300 bg-white focus:outline-hidden focus:ring-2 focus:ring-stone-900 transition-all text-stone-900"
+                      className="w-full text-xs px-2 py-1.5 rounded-lg border border-stone-300 bg-white focus:outline-hidden focus:ring-1 focus:ring-stone-900 transition-all text-stone-900"
                     >
                       <option value="natural">Natural (自然)</option>
-                      <option value="cool_empathetic">Cool & Empathetic (松弛知心)</option>
-                      <option value="energetic_happy">Energetic & Happy (阳光元气)</option>
-                      <option value="gentle_warm">Gentle & Warm (软萌温润)</option>
-                      <option value="playful_witty">Playful & Witty (傲娇斗嘴)</option>
-                      <option value="soft_calm">Soft & Calm (清爽沉静)</option>
-                      <option value="cheerful_cute">Cheerful & Cute (元气爱笑)</option>
-                      <option value="sporty_confident">Sporty & Confident (运动直率)</option>
+                      <option value="cool_empathetic">Cool (知心)</option>
+                      <option value="energetic_happy">Happy (阳光)</option>
+                      <option value="gentle_warm">Gentle (温润)</option>
+                      <option value="playful_witty">Witty (斗嘴)</option>
+                      <option value="soft_calm">Calm (沉静)</option>
                     </select>
                   </div>
                 </div>
@@ -1026,57 +992,56 @@ export const SettingsView: React.FC<Props> = ({
         </div>
       </div>
 
-      {/* SECTION 3: App Theme & Study Preferences */}
-      <div className="bg-white p-6 rounded-2xl shadow-xs border border-stone-200 space-y-4">
-        <div className="flex items-center gap-2 text-stone-800 font-bold mb-2">
-          <Palette size={20} className="text-stone-800" />
-          <span>App Theme</span>
+      {/* SECTION 3: App Theme */}
+      <div className="bg-white p-4 sm:p-5 rounded-2xl shadow-xs border border-stone-200/80 space-y-3">
+        <div className="flex items-center gap-2 text-stone-800 font-bold">
+          <Palette size={17} className="text-stone-800" />
+          <span className="text-sm font-bold">界面主题 (Theme)</span>
         </div>
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-3 gap-2.5">
           <button 
             type="button"
             onClick={() => onUpdateSettings({...settings, theme: 'default'})}
-            className={`p-4 rounded-xl border-2 transition-all flex flex-col items-center gap-2 cursor-pointer ${settings.theme === 'default' ? 'border-stone-900 bg-stone-50' : 'border-stone-200 bg-white hover:bg-stone-50'}`}
+            className={`p-3 rounded-xl border transition-all flex flex-col items-center gap-1.5 cursor-pointer ${settings.theme === 'default' ? 'border-stone-900 bg-stone-50 font-bold' : 'border-stone-200 bg-white hover:bg-stone-50'}`}
           >
-            <div className="w-10 h-10 rounded-full border border-stone-300 flex items-center justify-center text-stone-800 font-bold">
+            <div className="w-8 h-8 rounded-full border border-stone-300 flex items-center justify-center text-stone-800 text-xs font-bold">
               Aa
             </div>
-            <span className="font-bold text-xs">Light & Clean</span>
+            <span className="text-xs">极简 (Light)</span>
           </button>
           
           <button 
             type="button"
             onClick={() => onUpdateSettings({...settings, theme: 'kkt'})}
-            className={`p-4 rounded-xl border-2 transition-all flex flex-col items-center gap-2 cursor-pointer ${settings.theme === 'kkt' ? 'border-[#FFEB3B] bg-[#FFEB3B]/10' : 'border-stone-200 bg-white hover:bg-stone-50'}`}
+            className={`p-3 rounded-xl border transition-all flex flex-col items-center gap-1.5 cursor-pointer ${settings.theme === 'kkt' ? 'border-[#FFEB3B] bg-[#FFEB3B]/10 font-bold' : 'border-stone-200 bg-white hover:bg-stone-50'}`}
           >
-            <div className="w-10 h-10 rounded-[14px] bg-[#FFEB3B] flex items-center justify-center text-stone-900 font-bold text-xs">
+            <div className="w-8 h-8 rounded-xl bg-[#FFEB3B] flex items-center justify-center text-stone-900 font-bold text-[10px]">
               TALK
             </div>
-            <span className="font-bold text-xs">KakaoTalk</span>
+            <span className="text-xs">KakaoTalk</span>
           </button>
 
           <button 
             type="button"
             onClick={() => onUpdateSettings({...settings, theme: 'wechat'})}
-            className={`p-4 rounded-xl border-2 transition-all flex flex-col items-center gap-2 cursor-pointer ${settings.theme === 'wechat' ? 'border-[#07C160] bg-[#07C160]/10' : 'border-stone-200 bg-white hover:bg-stone-50'}`}
+            className={`p-3 rounded-xl border transition-all flex flex-col items-center gap-1.5 cursor-pointer ${settings.theme === 'wechat' ? 'border-[#07C160] bg-[#07C160]/10 font-bold' : 'border-stone-200 bg-white hover:bg-stone-50'}`}
           >
-            <div className="w-10 h-10 rounded-[14px] bg-[#07C160] flex items-center justify-center text-white font-bold text-xs">
+            <div className="w-8 h-8 rounded-xl bg-[#07C160] flex items-center justify-center text-white font-bold text-[10px]">
               微信
             </div>
-            <span className="font-bold text-xs">WeChat</span>
+            <span className="text-xs">WeChat</span>
           </button>
         </div>
       </div>
 
       {/* SECTION 4: Study Goals Settings */}
-      <div className="bg-white p-6 rounded-2xl shadow-xs border border-stone-200 space-y-4">
-        <div className="flex items-center gap-2 text-stone-800 font-bold mb-2">
-          <Target size={20} className="text-emerald-600" />
-          <span>Daily Recall & Study Goals</span>
+      <div className="bg-white p-4 sm:p-5 rounded-2xl shadow-xs border border-stone-200/80 space-y-3">
+        <div className="flex items-center gap-2 text-stone-800 font-bold">
+          <Target size={17} className="text-emerald-600" />
+          <span className="text-sm font-bold">每日目标 (Daily Goal)</span>
         </div>
         <div>
-          <label className="block text-xs font-semibold text-stone-600 mb-2">Daily Target Words</label>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
             <input 
               type="range" 
               min="10" 
@@ -1086,36 +1051,36 @@ export const SettingsView: React.FC<Props> = ({
               onChange={(e) => onUpdateSettings({...settings, dailyVocabGoal: Number(e.target.value)})}
               className="flex-1 accent-stone-800 cursor-pointer"
             />
-            <span className="font-bold text-stone-800 w-16 text-right text-sm">{settings.dailyVocabGoal} words/day</span>
+            <span className="font-semibold text-stone-800 text-xs shrink-0">{settings.dailyVocabGoal} 词 / 天</span>
           </div>
         </div>
       </div>
 
       {/* SECTION 5: Language Settings */}
-      <div className="bg-white p-6 rounded-2xl shadow-xs border border-stone-200 space-y-4">
-        <div className="flex items-center gap-2 text-stone-800 font-semibold mb-1">
-          <Globe size={20} className="text-slate-500" />
-          <span className="text-sm">Translation Target Language (翻译目标语言)</span>
+      <div className="bg-white p-4 sm:p-5 rounded-2xl shadow-xs border border-stone-200/80 space-y-3">
+        <div className="flex items-center gap-2 text-stone-800 font-bold">
+          <Globe size={17} className="text-slate-500" />
+          <span className="text-sm font-bold">目标语言 (Language)</span>
         </div>
         <div className="flex bg-neutral-100 p-1 rounded-xl">
           <button
             type="button"
             onClick={() => onUpdateSettings({...settings, languageMode: 'zh'})}
-            className={`flex-1 py-2 text-xs rounded-lg transition-all duration-200 cursor-pointer ${
+            className={`flex-1 py-1.5 text-xs rounded-lg transition-all cursor-pointer ${
               settings.languageMode === 'zh'
-                ? 'bg-white shadow-sm text-neutral-900 font-medium'
-                : 'text-neutral-400 hover:text-neutral-600 font-normal'
+                ? 'bg-white shadow-xs text-neutral-900 font-semibold'
+                : 'text-neutral-500 hover:text-neutral-700'
             }`}
           >
-            简体中文 (Simplified Chinese)
+            简体中文
           </button>
           <button
             type="button"
             onClick={() => onUpdateSettings({...settings, languageMode: 'en'})}
-            className={`flex-1 py-2 text-xs rounded-lg transition-all duration-200 cursor-pointer ${
+            className={`flex-1 py-1.5 text-xs rounded-lg transition-all cursor-pointer ${
               settings.languageMode === 'en'
-                ? 'bg-white shadow-sm text-neutral-900 font-medium'
-                : 'text-neutral-400 hover:text-neutral-600 font-normal'
+                ? 'bg-white shadow-xs text-neutral-900 font-semibold'
+                : 'text-neutral-500 hover:text-neutral-700'
             }`}
           >
             English
@@ -1124,15 +1089,15 @@ export const SettingsView: React.FC<Props> = ({
       </div>
 
       {/* SECTION 6: Proactive Messages Toggle */}
-      <div className="bg-white p-6 rounded-2xl shadow-xs border border-stone-200 space-y-4">
+      <div className="bg-white p-4 sm:p-5 rounded-2xl shadow-xs border border-stone-200/80 space-y-2">
         <div className="flex items-center justify-between">
           <div className="space-y-0.5 max-w-[80%]">
-            <div className="flex items-center gap-2 text-stone-800 font-bold">
-              <Sparkles size={18} className="text-amber-600" />
-              <span className="text-sm font-bold">接收角色日常主动消息 (Enable Proactive Messages)</span>
+            <div className="flex items-center gap-1.5 text-stone-800 font-bold">
+              <Sparkles size={16} className="text-amber-600" />
+              <span className="text-sm font-bold">角色主动发信 (Proactive)</span>
             </div>
             <p className="text-xs text-stone-500 leading-relaxed">
-              开启后，未在聊天窗口的角色会结合真实时间与专属人设，偶尔发送日常问候（可随时关闭）。
+              开启后，未在聊天界面的角色会结合真实时段和人设偶尔主动发信问候。
             </p>
           </div>
           <button
@@ -1156,23 +1121,23 @@ export const SettingsView: React.FC<Props> = ({
         </div>
       </div>
 
-      {/* SECTION 7: System Maintenance & Global Reset */}
-      <div className="bg-white p-6 rounded-2xl shadow-xs border border-stone-200 space-y-4">
-        <div className="flex items-center gap-2 text-stone-800 font-bold mb-1">
-          <RefreshCw size={18} className="text-rose-600" />
-          <span>System Reset & Maintenance</span>
+      {/* SECTION 7: System Reset */}
+      <div className="bg-white p-4 sm:p-5 rounded-2xl shadow-xs border border-stone-200/80 space-y-2">
+        <div className="flex items-center gap-2 text-stone-800 font-bold">
+          <RefreshCw size={16} className="text-rose-600" />
+          <span className="text-sm font-bold">数据重置 (Reset)</span>
         </div>
         <p className="text-xs text-stone-500 leading-relaxed">
-          想要重新开始吗？您可以一键恢复默认设置。全局恢复默认将清空所有聊天记录、核心记忆，并将所有系统内置好友重置为初始状态与精美的常量爱豆头像。
+          一键恢复所有聊天记录、生词本进度与预置角色头像至系统初始状态。
         </p>
-        <div className="flex flex-col sm:flex-row gap-3 pt-1">
+        <div className="pt-1">
           <button
             type="button"
             onClick={() => setShowResetConfirm(true)}
-            className="flex-1 py-2.5 px-4 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer transition-all duration-200"
+            className="w-full py-2 px-3 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 rounded-xl text-xs font-semibold transition flex items-center justify-center gap-1.5 cursor-pointer"
           >
-            <RefreshCw size={13} className="text-rose-600" />
-            <span>恢复系统全局默认 (Global Restore Defaults)</span>
+            <RefreshCw size={12} className="text-rose-600" />
+            <span>恢复系统全局默认</span>
           </button>
         </div>
       </div>
